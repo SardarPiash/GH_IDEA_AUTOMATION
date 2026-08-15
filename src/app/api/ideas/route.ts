@@ -6,7 +6,10 @@ import {
   type ListStatus,
 } from "@/lib/sheets";
 import type { StoredIdea } from "@/lib/split";
-import { splitIdeas } from "@/lib/gemini";
+import { splitIdeas } from "@/lib/classifier";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 // GET /api/ideas?status=pending|split
 export async function GET(req: Request) {
@@ -26,7 +29,7 @@ export async function GET(req: Request) {
   }
 }
 
-// POST /api/ideas { rowNumber, rawText } -> Gemini split, cache in the sheet
+// POST /api/ideas { rowNumber, rawText } -> Codex split (Gemini fallback), cache in the sheet
 export async function POST(req: Request) {
   try {
     const { rowNumber, rawText } = await req.json();

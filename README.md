@@ -53,7 +53,7 @@ Uses `gemini-3.6-flash` by default (set `GEMINI_MODEL` to override, e.g.
 ```bash
 cp .env.local.example .env.local
 # fill in SHEET_ID, GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY,
-# GEMINI_API_KEY, GMAIL_SENDER_ADDRESS, GMAIL_APP_PASSWORD
+# CODEX_GATEWAY_KEY, GMAIL_SENDER_ADDRESS, GMAIL_APP_PASSWORD
 
 npm install
 npm run dev                 # http://localhost:3000
@@ -61,13 +61,17 @@ npm run dev                 # http://localhost:3000
 
 ## How it works
 - `GET /api/ideas` — reads all rows from your Sheet copy
-- `POST /api/ideas` — sends one row's raw text to Gemini, gets back
+- `POST /api/ideas` — sends one row's raw text to the authenticated Codex CLI in
+  an isolated tmux session, gets back
   `{ ideaCount, ideas: [{ title, summary }] }`, caches it in columns N/O
+- `GET /api/codex` — health check for the local Codex gateway
+- `POST /api/codex` — runs `{ "input": "..." }` through the logged-in Codex CLI;
+  requires `Authorization: Bearer $CODEX_GATEWAY_KEY`
 - The page shows each split idea as an editable card with a team-email field
 - `POST /api/send` — sends that idea via Gmail (App Password/SMTP) and marks the row `sent`
 
 ## Notes
-- Volume (2–3 submissions/day) is far under Gemini's free tier and Gmail
-  API's free sending quota, so this stays entirely free on `localhost`.
+- Codex calls use the machine's existing `codex login` session; no OpenAI API key
+  is stored by this app. The host must have both `codex` and `tmux` installed.
 - Deploying free later: Vercel works fine for the Next.js app; just add the
   same env vars in the Vercel project settings.
