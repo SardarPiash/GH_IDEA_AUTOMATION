@@ -21,12 +21,18 @@ function getTransporter() {
   });
 }
 
-export async function sendIdeaEmail(to: string, subject: string, body: string) {
+export async function sendIdeaEmail(
+  to: string,
+  subject: string,
+  body: string,
+  attachment?: { filename: string; content: Buffer }
+) {
   const transporter = getTransporter();
   await transporter.sendMail({
     from: process.env.GMAIL_SENDER_ADDRESS,
     to,
     subject,
     text: body,
+    attachments: attachment ? [attachment] : [],
   });
 }

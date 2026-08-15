@@ -1,22 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendIdeaEmail } from "@/lib/gmail";
-import { markIdeaSent } from "@/lib/sheets";
+import { getSubmission, markSplitIdeaSent } from "@/lib/sheets";
+import { parseSplitResult } from "@/lib/split";
+import { buildIdeaDocx } from "@/lib/docBuilder";
 
-// POST /api/send -> { rowNumber, to, subject, body }
+// POST /api/send -> { rowNumber, ideaIndex, to, subject, body }
 export async function POST(req: NextRequest) {
   try {
-    const { rowNumber, to, subject, body } = await req.json();
-    if (!rowNumber || !to || !subject || !body) {
+    const { rowNumber, ideaIndex, to, subject, body } = await req.json();
+    if (
+      rowNumber == null ||
+      ideaIndex == null ||
+      !to ||
+      !subject ||
+      !body
+    ) {
       return NextResponse.json(
-        { error: "rowNumber, to, subject, and body are required" },
+        { error: "rowNumber, ideaIndex, to, subject, and body are required" },
         { status: 400 }
       );
     }
 
-    await sendIdeaEmail(to, subject, body);
-    await markIdeaSent(rowNumber);
+    const row = await getSubmission(rowNumber);
+    if (!row) {
+      return NextResponse.json({ error: `Row ${rowNumber} not found` }, { status: 404 });
+    }
 
-    return NextResponse.json({ ok: true });
+    const parsed = parseSplitResult(row.splitResultJson);
+    const idea = parsed?.ideas[ideaIndex];
+    if (!idea) {
+      return NextResponse.json({ error: "Split idea not found" }, { status: 400 });
+    }
+
+    const title = idea.title || "idea";
+    const docx = await buildIdeaDocx(title, idea.summary ?? "", row.rawIdeaText);
+
+    await sendIdeaEmail(to, subject, body, {
+      filename: `${title}.docx`,
+      content: docx,
+    });
+    const result = await markSplitIdeaSent(rowNumber, ideaIndex, to);
+
+    return NextResponse.json({ ok: true, ...result });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

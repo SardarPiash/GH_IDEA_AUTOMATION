@@ -1,5 +1,9 @@
-import { createPrivateKey } from "crypto";
 import { google } from "googleapis";
+import { getGoogleAuth } from "@/lib/googleAuth";
+import { parseSplitResult, type StoredIdea } from "@/lib/split";
+
+export type { StoredIdea, StoredSplitResult } from "@/lib/split";
+export { parseSplitResult } from "@/lib/split";
 
 // Column layout of the sheet copy:
 // A:K is a live IMPORTRANGE pull from the original form ("Form Responses 1"),
@@ -11,26 +15,8 @@ import { google } from "googleapis";
 
 const SHEET_RANGE = "Form Responses 1!A2:O"; // adjust the tab name if yours differs
 
-function getAuth() {
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key = process.env.GOOGLE_PRIVATE_KEY_BASE64
-    ? Buffer.from(process.env.GOOGLE_PRIVATE_KEY_BASE64, "base64").toString("utf-8")
-    : process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-  if (!email || !key) {
-    throw new Error(
-      "Missing GOOGLE_SERVICE_ACCOUNT_EMAIL or GOOGLE_PRIVATE_KEY in .env.local"
-    );
-  }
-  const normalizedKey = createPrivateKey(key).export({ type: "pkcs8", format: "pem" }).toString();
-  return new google.auth.JWT({
-    email,
-    key: normalizedKey,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-}
-
 function getSheetsClient() {
-  return google.sheets({ version: "v4", auth: getAuth() });
+  return google.sheets({ version: "v4", auth: getGoogleAuth() });
 }
 
 export type SubmissionRow = {
@@ -50,7 +36,23 @@ export type SubmissionRow = {
   splitResultJson: string;
 };
 
-export async function getPendingSubmissions(): Promise<SubmissionRow[]> {
+export type ListStatus = "pending" | "split";
+
+function rowStatus(row: SubmissionRow): string {
+  return (row.status || "").trim().toLowerCase();
+}
+
+export function isPendingRow(row: SubmissionRow): boolean {
+  const status = rowStatus(row);
+  return status !== "split" && status !== "sent" && Boolean(row.rawIdeaText.trim());
+}
+
+export function isSplitRow(row: SubmissionRow): boolean {
+  const status = rowStatus(row);
+  return (status === "split" || status === "sent") && Boolean(row.splitResultJson);
+}
+
+export async function getSubmissions(): Promise<SubmissionRow[]> {
   try {
     const sheets = getSheetsClient();
     const sheetId = process.env.SHEET_ID;
@@ -87,24 +89,63 @@ export async function getPendingSubmissions(): Promise<SubmissionRow[]> {
   }
 }
 
-export async function saveSplitResult(rowNumber: number, splitResultJson: string) {
+export async function getSubmissionsByStatus(status: ListStatus): Promise<SubmissionRow[]> {
+  const rows = await getSubmissions();
+  return rows.filter(status === "pending" ? isPendingRow : isSplitRow);
+}
+
+export async function getSubmission(rowNumber: number): Promise<SubmissionRow | null> {
+  const rows = await getSubmissions();
+  return rows.find((row) => row.rowNumber === rowNumber) ?? null;
+}
+
+async function writeSplitColumns(rowNumber: number, status: string, splitResultJson: string) {
   const sheets = getSheetsClient();
   const sheetId = process.env.SHEET_ID;
   await sheets.spreadsheets.values.update({
     spreadsheetId: sheetId,
     range: `Form Responses 1!N${rowNumber}:O${rowNumber}`,
     valueInputOption: "RAW",
-    requestBody: { values: [["split", splitResultJson]] },
+    requestBody: { values: [[status, splitResultJson]] },
   });
 }
 
-export async function markIdeaSent(rowNumber: number) {
-  const sheets = getSheetsClient();
-  const sheetId = process.env.SHEET_ID;
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: sheetId,
-    range: `Form Responses 1!N${rowNumber}:N${rowNumber}`,
-    valueInputOption: "RAW",
-    requestBody: { values: [["sent"]] },
-  });
+export async function saveSplitResult(rowNumber: number, splitResultJson: string) {
+  await writeSplitColumns(rowNumber, "split", splitResultJson);
+}
+
+export async function saveSplitEdits(rowNumber: number, ideas: StoredIdea[]) {
+  const rows = await getSubmissions();
+  const row = rows.find((r) => r.rowNumber === rowNumber);
+  if (!row) throw new Error(`Row ${rowNumber} not found`);
+  const status = rowStatus(row) === "sent" ? "sent" : "split";
+  await writeSplitColumns(
+    rowNumber,
+    status,
+    JSON.stringify({ ideaCount: ideas.length, ideas })
+  );
+}
+
+export async function markSplitIdeaSent(
+  rowNumber: number,
+  ideaIndex: number,
+  teamEmail: string
+): Promise<{ allSent: boolean; ideas: StoredIdea[] }> {
+  const rows = await getSubmissions();
+  const row = rows.find((r) => r.rowNumber === rowNumber);
+  if (!row) throw new Error(`Row ${rowNumber} not found`);
+
+  const parsed = parseSplitResult(row.splitResultJson);
+  if (!parsed?.ideas[ideaIndex]) throw new Error("Split idea not found");
+
+  const ideas = parsed.ideas.map((idea, i) =>
+    i === ideaIndex ? { ...idea, teamEmail, sent: true } : idea
+  );
+  const allSent = ideas.every((idea) => idea.sent);
+  await writeSplitColumns(
+    rowNumber,
+    allSent ? "sent" : "split",
+    JSON.stringify({ ideaCount: ideas.length, ideas })
+  );
+  return { allSent, ideas };
 }
