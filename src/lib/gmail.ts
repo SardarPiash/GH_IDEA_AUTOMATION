@@ -25,7 +25,8 @@ export async function sendIdeaEmail(
   to: string,
   subject: string,
   body: string,
-  attachment?: { filename: string; content: Buffer }
+  attachment?: { filename: string; content: Buffer },
+  html?: string
 ) {
   const transporter = getTransporter();
   await transporter.sendMail({
@@ -33,6 +34,7 @@ export async function sendIdeaEmail(
     to,
     subject,
     text: body,
+    html,
     attachments: attachment ? [attachment] : [],
   });
 }

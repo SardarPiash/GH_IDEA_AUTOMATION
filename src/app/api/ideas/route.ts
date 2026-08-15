@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  getSubmission,
   getSubmissionsByStatus,
   saveSplitEdits,
   saveSplitResult,
@@ -29,22 +30,50 @@ export async function GET(req: Request) {
   }
 }
 
-// POST /api/ideas { rowNumber, rawText } -> Codex split (Gemini fallback), cache in the sheet
+// POST /api/ideas { rowNumber } -> streams status, then Codex/Gemini result
 export async function POST(req: Request) {
-  try {
-    const { rowNumber, rawText } = await req.json();
-    if (!rowNumber || !rawText) {
-      return NextResponse.json(
-        { error: "rowNumber and rawText are required" },
-        { status: 400 }
-      );
-    }
-    const result = await splitIdeas(rawText);
-    await saveSplitResult(rowNumber, JSON.stringify(result));
-    return NextResponse.json(result);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  const { rowNumber } = await req.json();
+  if (!rowNumber) {
+    return NextResponse.json({ error: "rowNumber is required" }, { status: 400 });
   }
+  const row = await getSubmission(rowNumber);
+  if (!row) {
+    return NextResponse.json({ error: `Row ${rowNumber} not found` }, { status: 404 });
+  }
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      };
+      try {
+        send({ type: "status", stage: "start", message: "Starting…" });
+        const result = await splitIdeas(row, (progress) => {
+          send({ type: "status", ...progress });
+        });
+        await saveSplitResult(rowNumber, JSON.stringify(result));
+        send({
+          type: "done",
+          source: result.source,
+          ideaCount: result.ideaCount,
+          ideas: result.ideas,
+          message: `Finished (${result.source}) — ${result.ideaCount} idea${result.ideaCount === 1 ? "" : "s"} saved.`,
+        });
+      } catch (err: any) {
+        send({ type: "error", message: err.message || "Split failed" });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache",
+    },
+  });
 }
 
 // PATCH /api/ideas { rowNumber, ideas } -> persist title/summary/email edits to column O

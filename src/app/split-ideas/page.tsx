@@ -111,8 +111,6 @@ export default function SplitIdeasPage() {
           rowNumber: row.rowNumber,
           ideaIndex: index,
           to: idea.teamEmail,
-          subject: `New idea: ${idea.title}`,
-          body: `${idea.summary}\n\n— Submitted by ${row.name} (PIN ${row.pin}) on ${row.timestamp}`,
         }),
       });
       const data = await res.json();
@@ -164,8 +162,8 @@ export default function SplitIdeasPage() {
     <main style={{ maxWidth: 780, margin: "0 auto", padding: 24 }}>
       <h1 style={{ fontSize: 22, marginBottom: 8 }}>Split Ideas Dashboard</h1>
       <p style={{ color: "#555", marginTop: 0, marginBottom: 16, fontSize: 14 }}>
-        Gemini-split ideas. Each idea has a Word file you can download here.
-        Send also attaches that same .docx to the email.
+        Each split idea is a proposal document built from that sheet row.
+        Download or Send uses the same Word file.
       </p>
 
       {rows.length === 0 && (
@@ -239,8 +237,8 @@ export default function SplitIdeasPage() {
                     value={idea.summary}
                     onChange={(e) => updateIdea(row.rowNumber, i, { summary: e.target.value })}
                     onBlur={() => handleBlur(row.rowNumber)}
-                    rows={4}
-                    style={{ width: "100%", padding: 6, marginBottom: 8 }}
+                    rows={18}
+                    style={{ width: "100%", padding: 6, marginBottom: 8, fontFamily: "inherit", fontSize: 13 }}
                   />
                   <input
                     placeholder="team@company.com"

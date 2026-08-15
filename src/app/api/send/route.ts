@@ -3,20 +3,15 @@ import { sendIdeaEmail } from "@/lib/gmail";
 import { getSubmission, markSplitIdeaSent } from "@/lib/sheets";
 import { parseSplitResult } from "@/lib/split";
 import { buildIdeaDocx } from "@/lib/docBuilder";
+import { ideaEmailContent, ideaEmailSubject } from "@/lib/emailTemplate";
 
-// POST /api/send -> { rowNumber, ideaIndex, to, subject, body }
+// POST /api/send -> { rowNumber, ideaIndex, to }
 export async function POST(req: NextRequest) {
   try {
-    const { rowNumber, ideaIndex, to, subject, body } = await req.json();
-    if (
-      rowNumber == null ||
-      ideaIndex == null ||
-      !to ||
-      !subject ||
-      !body
-    ) {
+    const { rowNumber, ideaIndex, to } = await req.json();
+    if (rowNumber == null || ideaIndex == null || !to) {
       return NextResponse.json(
-        { error: "rowNumber, ideaIndex, to, subject, and body are required" },
+        { error: "rowNumber, ideaIndex, and to are required" },
         { status: 400 }
       );
     }
@@ -34,11 +29,18 @@ export async function POST(req: NextRequest) {
 
     const title = idea.title || "idea";
     const docx = await buildIdeaDocx(title, idea.summary ?? "", row.rawIdeaText);
+    const { text, html } = ideaEmailContent(row, title);
 
-    await sendIdeaEmail(to, subject, body, {
-      filename: `${title}.docx`,
-      content: docx,
-    });
+    await sendIdeaEmail(
+      to,
+      ideaEmailSubject(title),
+      text,
+      {
+        filename: `${title}.docx`,
+        content: docx,
+      },
+      html
+    );
     const result = await markSplitIdeaSent(rowNumber, ideaIndex, to);
 
     return NextResponse.json({ ok: true, ...result });

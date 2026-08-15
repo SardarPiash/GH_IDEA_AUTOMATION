@@ -11,16 +11,27 @@ type SubmissionRow = {
   rawIdeaText: string;
 };
 
+type SplitLog = { message: string; tone: "running" | "done" | "error" };
+
 export default function ReviewPage() {
   const [rows, setRows] = useState<SubmissionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [splitting, setSplitting] = useState<number | null>(null);
   const [justSplit, setJustSplit] = useState<string | null>(null);
+  const [logsByRow, setLogsByRow] = useState<Record<number, SplitLog[]>>({});
+  const [finishedRows, setFinishedRows] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     fetchRows();
   }, []);
+
+  function appendLog(rowNumber: number, message: string, tone: SplitLog["tone"] = "running") {
+    setLogsByRow((prev) => ({
+      ...prev,
+      [rowNumber]: [...(prev[rowNumber] ?? []), { message, tone }],
+    }));
+  }
 
   async function fetchRows() {
     setLoading(true);
@@ -39,22 +50,63 @@ export default function ReviewPage() {
 
   async function handleSplit(row: SubmissionRow) {
     setSplitting(row.rowNumber);
+    setLogsByRow((prev) => ({ ...prev, [row.rowNumber]: [{ message: "Starting…", tone: "running" }] }));
     try {
       const res = await fetch("/api/ideas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rowNumber: row.rowNumber, rawText: row.rawIdeaText }),
+        body: JSON.stringify({ rowNumber: row.rowNumber }),
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.body || !contentType.includes("ndjson")) {
+        const data = await res.json();
+        throw new Error(data.error || "Split failed");
+      }
 
-      setRows((prev) => prev.filter((r) => r.rowNumber !== row.rowNumber));
-      const count = data.ideaCount ?? data.ideas?.length ?? 0;
-      setJustSplit(
-        `Split ${row.name}'s submission into ${count} idea${count === 1 ? "" : "s"} and saved it to the sheet.`
-      );
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finishedMessage: string | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) processLine(line);
+      }
+      if (buffer.trim()) processLine(buffer);
+
+      function processLine(line: string) {
+        if (!line.trim()) return;
+        const event = JSON.parse(line) as {
+          type: string;
+          message?: string;
+          ideaCount?: number;
+          source?: string;
+        };
+        if (event.type === "error") {
+          throw new Error(event.message || "Split failed");
+        }
+        if (event.type === "done") {
+          finishedMessage =
+            event.message ||
+            `Finished (${event.source}) — ${event.ideaCount} idea${event.ideaCount === 1 ? "" : "s"} saved.`;
+          appendLog(row.rowNumber, finishedMessage, "done");
+        } else if (event.message) {
+          appendLog(row.rowNumber, event.message, "running");
+        }
+      }
+
+      if (finishedMessage) {
+        setFinishedRows((prev) => ({ ...prev, [row.rowNumber]: true }));
+        setJustSplit(finishedMessage);
+      } else {
+        throw new Error("Split ended without a finished response");
+      }
     } catch (err: any) {
-      alert(`Split failed: ${err.message}`);
+      appendLog(row.rowNumber, `Failed: ${err.message}`, "error");
     } finally {
       setSplitting(null);
     }
@@ -87,8 +139,8 @@ export default function ReviewPage() {
     <main style={{ maxWidth: 780, margin: "0 auto", padding: 24 }}>
       <h1 style={{ fontSize: 22, marginBottom: 8 }}>Idea Review & Routing</h1>
       <p style={{ color: "#555", marginTop: 0, marginBottom: 16, fontSize: 14 }}>
-        Unsplit submissions only. After Gemini succeeds, the row leaves this list and
-        appears on the Split Ideas Dashboard.
+        Unsplit submissions only. After a successful split, the row leaves this
+        list and appears on the Split Ideas Dashboard as a proposal document.
       </p>
 
       {justSplit && (
@@ -129,9 +181,42 @@ export default function ReviewPage() {
           <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 14 }}>
             {row.rawIdeaText}
           </pre>
-          <button onClick={() => handleSplit(row)} disabled={splitting === row.rowNumber}>
-            {splitting === row.rowNumber ? "Splitting…" : "Split into ideas"}
-          </button>
+          <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <button
+              onClick={() => handleSplit(row)}
+              disabled={splitting === row.rowNumber || finishedRows[row.rowNumber]}
+            >
+              {splitting === row.rowNumber
+                ? "Splitting…"
+                : finishedRows[row.rowNumber]
+                  ? "Split finished"
+                  : "Split into ideas"}
+            </button>
+            <div style={{ fontSize: 12, lineHeight: 1.45, minWidth: 220, flex: 1 }}>
+              {(logsByRow[row.rowNumber] ?? []).map((log, i) => (
+                <div
+                  key={i}
+                  style={{
+                    color:
+                      log.tone === "done" ? "#14532d" : log.tone === "error" ? "#9a3412" : "#1d4ed8",
+                  }}
+                >
+                  {log.tone === "running" && splitting === row.rowNumber && i === (logsByRow[row.rowNumber]?.length ?? 1) - 1
+                    ? `● ${log.message}`
+                    : log.tone === "done"
+                      ? `✓ ${log.message}`
+                      : log.tone === "error"
+                        ? `✕ ${log.message}`
+                        : log.message}
+                </div>
+              ))}
+              {finishedRows[row.rowNumber] && (
+                <Link href="/split-ideas" style={{ fontWeight: 650, color: "#14532d" }}>
+                  Open dashboard →
+                </Link>
+              )}
+            </div>
+          </div>
         </section>
       ))}
     </main>
