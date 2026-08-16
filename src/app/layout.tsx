@@ -1,4 +1,5 @@
 import Nav from "@/components/Nav";
+import "./globals.css";
 
 export const metadata = {
   title: "Idea Router",
@@ -8,7 +9,7 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ fontFamily: "system-ui, sans-serif", margin: 0, background: "#f7f7f8" }}>
+      <body>
         <Nav />
         {children}
       </body>

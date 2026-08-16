@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { parseSplitResult, type StoredIdea } from "@/lib/split";
 
@@ -19,11 +19,29 @@ type EditableIdea = StoredIdea & {
   error?: string;
 };
 
+type Tab = "pending" | "reviewed";
+
+const pageStyle: React.CSSProperties = {
+  maxWidth: 920,
+  margin: "0 auto",
+  padding: "28px 24px 64px",
+};
+
+const cardStyle: React.CSSProperties = {
+  background: "var(--card)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius)",
+  boxShadow: "var(--shadow)",
+  padding: 20,
+  marginBottom: 16,
+};
+
 export default function SplitIdeasPage() {
   const [rows, setRows] = useState<SubmissionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [ideasByRow, setIdeasByRow] = useState<Record<number, EditableIdea[]>>({});
+  const [tab, setTab] = useState<Tab>("pending");
 
   useEffect(() => {
     fetchRows();
@@ -121,6 +139,7 @@ export default function SplitIdeasPage() {
           prev.map((r) => (r.rowNumber === row.rowNumber ? { ...r, status: "sent" } : r))
         );
       }
+      setTab("reviewed");
     } catch (err: any) {
       updateIdea(row.rowNumber, index, { sending: false, error: err.message });
     }
@@ -135,140 +154,278 @@ export default function SplitIdeasPage() {
     }
   }
 
-  if (loading) return <div style={{ padding: 24 }}>Loading split ideas…</div>;
+  const counts = useMemo(() => {
+    let pending = 0;
+    let reviewed = 0;
+    for (const row of rows) {
+      for (const idea of ideasByRow[row.rowNumber] ?? []) {
+        if (idea.sent) reviewed += 1;
+        else pending += 1;
+      }
+    }
+    return { pending, reviewed };
+  }, [rows, ideasByRow]);
+
+  if (loading) {
+    return (
+      <main style={pageStyle}>
+        <p style={{ color: "var(--muted)" }}>Loading split ideas…</p>
+      </main>
+    );
+  }
 
   if (loadError) {
     return (
-      <div style={{ padding: 24, maxWidth: 780, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 22 }}>Split Ideas Dashboard</h1>
-        <div
-          style={{
-            background: "#fdecea",
-            border: "1px solid #f5c2c0",
-            borderRadius: 8,
-            padding: 16,
-            color: "#7a1f1a",
-            marginTop: 16,
-          }}
-        >
-          <strong>Couldn't load the sheet:</strong>
+      <main style={pageStyle}>
+        <h1 style={{ fontSize: 24, margin: "0 0 12px" }}>Split ideas</h1>
+        <div style={{ ...cardStyle, background: "var(--danger-bg)", borderColor: "#fecaca" }}>
+          <strong>Couldn’t load the sheet</strong>
           <pre style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{loadError}</pre>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <main style={{ maxWidth: 780, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ fontSize: 22, marginBottom: 8 }}>Split Ideas Dashboard</h1>
-      <p style={{ color: "#555", marginTop: 0, marginBottom: 16, fontSize: 14 }}>
-        Each split idea is a proposal document built from that sheet row.
-        Download or Send uses the same Word file.
-      </p>
+    <main style={pageStyle}>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 24, letterSpacing: "-0.03em", margin: "0 0 6px" }}>Split ideas</h1>
+        <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, maxWidth: 640 }}>
+          Review generated proposals, send them to the owning team, or reopen items that
+          have already been handed over.
+        </p>
+      </div>
+
+      <div
+        role="tablist"
+        style={{
+          display: "flex",
+          gap: 4,
+          padding: 4,
+          background: "#e8edf3",
+          borderRadius: 10,
+          width: "fit-content",
+          marginBottom: 20,
+        }}
+      >
+        <TabButton
+          active={tab === "pending"}
+          onClick={() => setTab("pending")}
+          label="Not reviewed"
+          count={counts.pending}
+        />
+        <TabButton
+          active={tab === "reviewed"}
+          onClick={() => setTab("reviewed")}
+          label="Reviewed"
+          count={counts.reviewed}
+        />
+      </div>
 
       {rows.length === 0 && (
-        <p>
-          No split ideas yet.{" "}
-          <Link href="/">Split a submission from Idea Review →</Link>
-        </p>
+        <div style={cardStyle}>
+          <p style={{ margin: 0, color: "var(--muted)" }}>
+            No split ideas yet.{" "}
+            <Link href="/">Split a submission from Inbox</Link>
+          </p>
+        </div>
       )}
 
       {rows.map((row) => {
-        const ideas = ideasByRow[row.rowNumber] ?? [];
-        const allSent = row.status === "sent" || (ideas.length > 0 && ideas.every((idea) => idea.sent));
-        return (
-          <section
-            key={row.rowNumber}
-            style={{
-              background: "white",
-              border: "1px solid #e2e2e5",
-              borderRadius: 10,
-              padding: 16,
-              marginBottom: 16,
-            }}
-          >
-            <div style={{ fontSize: 13, color: "#666", marginBottom: 6 }}>
-              Split from {row.name} · PIN {row.pin} · {row.timestamp}{" "}
-              {allSent && <strong style={{ color: "#0a7d2c" }}>· all sent</strong>}
-              {!allSent && row.status === "split" && (
-                <strong style={{ color: "#1d4ed8" }}>· split</strong>
-              )}
-            </div>
+        const ideas = (ideasByRow[row.rowNumber] ?? [])
+          .map((idea, index) => ({ idea, index }))
+          .filter(({ idea }) => (tab === "reviewed" ? idea.sent : !idea.sent));
+        if (ideas.length === 0) return null;
 
-            <div style={{ fontSize: 12, color: "#888", marginBottom: 4, fontWeight: 650 }}>
-              Original idea
-            </div>
-            <pre
+        return (
+          <section key={`${row.rowNumber}-${tab}`} style={cardStyle}>
+            <div
               style={{
-                whiteSpace: "pre-wrap",
-                fontFamily: "inherit",
-                fontSize: 14,
-                background: "#f4f4f5",
-                borderRadius: 8,
-                padding: 12,
-                marginTop: 0,
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "flex-start",
+                marginBottom: 12,
               }}
             >
-              {row.rawIdeaText}
-            </pre>
-
-            <div style={{ fontSize: 12, color: "#888", margin: "12px 0 8px", fontWeight: 650 }}>
-              Split into {ideas.length} idea{ideas.length === 1 ? "" : "s"}
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{row.name || "Unknown submitter"}</div>
+                <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 2 }}>
+                  PIN {row.pin || "—"} · {row.timestamp || "No date"}
+                </div>
+              </div>
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: "4px 8px",
+                  borderRadius: 999,
+                  background: tab === "reviewed" ? "var(--success-bg)" : "var(--accent-bg)",
+                  color: tab === "reviewed" ? "var(--success)" : "var(--primary)",
+                }}
+              >
+                {tab === "reviewed" ? "Sent" : "Awaiting send"}
+              </span>
             </div>
 
-            <div style={{ display: "grid", gap: 12 }}>
-              {ideas.map((idea, i) => (
-                <div
-                  key={i}
+            <details style={{ marginBottom: 14 }}>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  color: "var(--muted)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                Original submission
+              </summary>
+              <pre
+                style={{
+                  whiteSpace: "pre-wrap",
+                  fontFamily: "inherit",
+                  fontSize: 13,
+                  background: "#f8fafc",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: 12,
+                  margin: "8px 0 0",
+                  color: "#334155",
+                }}
+              >
+                {row.rawIdeaText}
+              </pre>
+            </details>
+
+            <div style={{ display: "grid", gap: 14 }}>
+              {ideas.map(({ idea, index }) => (
+                <article
+                  key={index}
                   style={{
-                    border: "1px solid #ddd",
-                    borderRadius: 8,
-                    padding: 12,
-                    background: "#fafafa",
+                    border: "1px solid var(--border)",
+                    borderRadius: 10,
+                    padding: 14,
+                    background: "#fbfcfe",
                   }}
                 >
                   <input
                     value={idea.title}
-                    onChange={(e) => updateIdea(row.rowNumber, i, { title: e.target.value })}
+                    readOnly={idea.sent}
+                    onChange={(e) => updateIdea(row.rowNumber, index, { title: e.target.value })}
                     onBlur={() => handleBlur(row.rowNumber)}
-                    style={{ fontWeight: 600, width: "100%", marginBottom: 6, padding: 4 }}
+                    style={{
+                      fontWeight: 700,
+                      width: "100%",
+                      marginBottom: 8,
+                      fontSize: 15,
+                      background: idea.sent ? "#f8fafc" : "#fff",
+                    }}
                   />
                   <textarea
                     value={idea.summary}
-                    onChange={(e) => updateIdea(row.rowNumber, i, { summary: e.target.value })}
+                    readOnly={idea.sent}
+                    onChange={(e) => updateIdea(row.rowNumber, index, { summary: e.target.value })}
                     onBlur={() => handleBlur(row.rowNumber)}
-                    rows={18}
-                    style={{ width: "100%", padding: 6, marginBottom: 8, fontFamily: "inherit", fontSize: 13 }}
+                    rows={16}
+                    style={{
+                      width: "100%",
+                      marginBottom: 12,
+                      fontSize: 13,
+                      lineHeight: 1.5,
+                      resize: "vertical",
+                      background: idea.sent ? "#f8fafc" : "#fff",
+                    }}
                   />
-                  <input
-                    placeholder="team@company.com"
-                    value={idea.teamEmail ?? ""}
-                    onChange={(e) => updateIdea(row.rowNumber, i, { teamEmail: e.target.value })}
-                    onBlur={() => handleBlur(row.rowNumber)}
-                    style={{ width: "60%", padding: 4, marginRight: 8 }}
-                  />
-                  <button
-                    onClick={() => handleSend(row, i)}
-                    disabled={idea.sending || idea.sent}
-                  >
-                    {idea.sent ? "Sent ✓" : idea.sending ? "Sending…" : "Send"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDownload(row, i)}
-                    style={{ marginLeft: 8 }}
-                  >
-                    Download .docx
-                  </button>
-                  {idea.error && (
-                    <div style={{ color: "crimson", fontSize: 13 }}>{idea.error}</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                      placeholder="team@company.com"
+                      value={idea.teamEmail ?? ""}
+                      readOnly={idea.sent}
+                      onChange={(e) =>
+                        updateIdea(row.rowNumber, index, { teamEmail: e.target.value })
+                      }
+                      onBlur={() => handleBlur(row.rowNumber)}
+                      style={{ flex: "1 1 240px", minWidth: 200, background: idea.sent ? "#f8fafc" : "#fff" }}
+                    />
+                    {tab === "pending" && (
+                      <button
+                        className="primary"
+                        onClick={() => handleSend(row, index)}
+                        disabled={idea.sending || idea.sent}
+                      >
+                        {idea.sending ? "Sending…" : "Send to team"}
+                      </button>
+                    )}
+                    <button type="button" onClick={() => handleDownload(row, index)}>
+                      Download .docx
+                    </button>
+                  </div>
+                  {idea.sent && idea.teamEmail && (
+                    <div style={{ marginTop: 8, fontSize: 12, color: "var(--success)", fontWeight: 600 }}>
+                      Handed over to {idea.teamEmail}
+                    </div>
                   )}
-                </div>
+                  {idea.error && (
+                    <div style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{idea.error}</div>
+                  )}
+                </article>
               ))}
             </div>
           </section>
         );
       })}
+
+      {rows.length > 0 &&
+        ((tab === "pending" && counts.pending === 0) ||
+          (tab === "reviewed" && counts.reviewed === 0)) && (
+          <div style={{ ...cardStyle, color: "var(--muted)" }}>
+            {tab === "pending"
+              ? "No unsent ideas. Sent items are in Reviewed."
+              : "No sent ideas yet. Items move here after Send to team."}
+          </div>
+        )}
     </main>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  label,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count: number;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      style={{
+        border: "none",
+        background: active ? "#fff" : "transparent",
+        boxShadow: active ? "0 1px 2px rgba(15, 23, 42, 0.08)" : "none",
+        color: active ? "var(--text)" : "var(--muted)",
+        padding: "8px 14px",
+        borderRadius: 8,
+      }}
+    >
+      {label}
+      <span
+        style={{
+          marginLeft: 8,
+          fontSize: 12,
+          background: active ? "var(--accent-bg)" : "#dbe3ee",
+          color: active ? "var(--primary)" : "var(--muted)",
+          borderRadius: 999,
+          padding: "1px 7px",
+        }}
+      >
+        {count}
+      </span>
+    </button>
   );
 }

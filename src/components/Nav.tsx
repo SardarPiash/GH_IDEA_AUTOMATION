@@ -4,44 +4,30 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const links = [
-  { href: "/", label: "Idea Review & Routing" },
-  { href: "/split-ideas", label: "Split Ideas Dashboard" },
+  { href: "/", label: "Inbox" },
+  { href: "/split-ideas", label: "Split ideas" },
 ];
 
 export default function Nav() {
   const pathname = usePathname();
 
   return (
-    <nav
-      style={{
-        background: "white",
-        borderBottom: "1px solid #e2e2e5",
-        padding: "12px 24px",
-        display: "flex",
-        gap: 8,
-        alignItems: "center",
-      }}
-    >
+    <header className="app-header">
+      <Link href="/" className="app-brand">
+        Idea Router
+      </Link>
       {links.map((link) => {
         const active = pathname === link.href;
         return (
           <Link
             key={link.href}
             href={link.href}
-            style={{
-              textDecoration: "none",
-              color: active ? "#111" : "#555",
-              fontWeight: active ? 650 : 500,
-              fontSize: 14,
-              padding: "6px 10px",
-              borderRadius: 6,
-              background: active ? "#eef2ff" : "transparent",
-            }}
+            className={`app-nav-link${active ? " active" : ""}`}
           >
             {link.label}
           </Link>
         );
       })}
-    </nav>
+    </header>
   );
 }
