@@ -4,6 +4,7 @@ import { getSubmission, markSplitIdeaSent } from "@/lib/sheets";
 import { parseSplitResult } from "@/lib/split";
 import { buildIdeaPdf } from "@/lib/pdfBuilder";
 import { ideaEmailContent, ideaEmailSubject } from "@/lib/emailTemplate";
+import { formatEmails, invalidEmails, isValidEmail, parseEmails } from "@/lib/emails";
 
 // POST /api/send -> { rowNumber, ideaIndex, to }
 export async function POST(req: NextRequest) {
@@ -12,6 +13,18 @@ export async function POST(req: NextRequest) {
     if (rowNumber == null || ideaIndex == null || !to) {
       return NextResponse.json(
         { error: "rowNumber, ideaIndex, and to are required" },
+        { status: 400 }
+      );
+    }
+
+    const teamEmails = parseEmails(to);
+    const bad = invalidEmails(teamEmails);
+    if (!teamEmails.length) {
+      return NextResponse.json({ error: "Enter at least one team email" }, { status: 400 });
+    }
+    if (bad.length) {
+      return NextResponse.json(
+        { error: `Not a valid email: ${bad[0]}` },
         { status: 400 }
       );
     }
@@ -31,9 +44,12 @@ export async function POST(req: NextRequest) {
     const meta = `${row.name || "Unknown submitter"} · PIN ${row.pin || "—"} · ${row.timestamp || "No date"}`;
     const pdf = await buildIdeaPdf(title, idea.summary ?? "", meta);
     const { text, html } = ideaEmailContent(row, title);
+    const submitter = parseEmails(row.email)[0];
+    const cc = submitter && isValidEmail(submitter) && !teamEmails.includes(submitter) ? [submitter] : [];
+    const storedTo = formatEmails(teamEmails);
 
     await sendIdeaEmail(
-      to,
+      teamEmails,
       ideaEmailSubject(title),
       text,
       {
@@ -41,9 +57,10 @@ export async function POST(req: NextRequest) {
         content: pdf,
         contentType: "application/pdf",
       },
-      html
+      html,
+      cc
     );
-    const result = await markSplitIdeaSent(rowNumber, ideaIndex, to);
+    const result = await markSplitIdeaSent(rowNumber, ideaIndex, storedTo);
 
     return NextResponse.json({ ok: true, ...result });
   } catch (err: any) {

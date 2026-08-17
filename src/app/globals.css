@@ -62,6 +62,16 @@ button.primary:hover:not(:disabled) {
   background: var(--primary-hover);
 }
 
+button.danger {
+  background: var(--danger-bg);
+  border-color: #fecaca;
+  color: var(--danger);
+}
+
+button.danger:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
 input,
 textarea {
   border: 1px solid var(--border);
@@ -76,6 +86,110 @@ input:focus,
 textarea:focus {
   outline: 2px solid #bfdbfe;
   border-color: #93c5fd;
+}
+
+.email-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-height: 42px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: text;
+}
+
+.email-chips.is-readonly {
+  background: #f8fafc;
+  cursor: default;
+}
+
+.email-chips:focus-within {
+  outline: 2px solid #bfdbfe;
+  border-color: #93c5fd;
+}
+
+.email-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.email-chip.is-locked {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.email-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email-chip-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  opacity: 0.8;
+}
+
+.email-chip-remove {
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.email-chip-remove:hover:not(:disabled) {
+  background: rgba(30, 58, 138, 0.12);
+}
+
+.email-chips-input {
+  flex: 1 1 160px;
+  min-width: 140px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  padding: 4px 2px;
+  background: transparent;
+  font-size: 13px;
+}
+
+.email-chips-input:focus {
+  outline: none;
+  border: none;
+}
+
+.email-chips-empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.email-chips-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.email-chips-hint.is-error {
+  color: var(--danger);
+  font-weight: 600;
 }
 
 .app-header {

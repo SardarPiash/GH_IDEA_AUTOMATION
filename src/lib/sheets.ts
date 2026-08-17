@@ -172,6 +172,26 @@ export async function saveSplitEdits(rowNumber: number, ideas: StoredIdea[]) {
   );
 }
 
+export async function clearAllProcessing(): Promise<{ cleared: number }> {
+  const rows = await getSubmissions();
+  const lastRow = rows.reduce((max, row) => Math.max(max, row.rowNumber), 1);
+  const cleared = rows.filter(
+    (row) => row.status.trim() || row.splitResultJson.trim() || row.ackEmailSent.trim()
+  ).length;
+  if (lastRow < 2 || cleared === 0) return { cleared: 0 };
+
+  const sheets = getSheetsClient();
+  const sheetId = process.env.SHEET_ID;
+  const emptyRows = Array.from({ length: lastRow - 1 }, () => ["", "", ""]);
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: sheetId,
+    range: `Form Responses 1!N2:P${lastRow}`,
+    valueInputOption: "RAW",
+    requestBody: { values: emptyRows },
+  });
+  return { cleared };
+}
+
 export async function markSplitIdeaSent(
   rowNumber: number,
   ideaIndex: number,

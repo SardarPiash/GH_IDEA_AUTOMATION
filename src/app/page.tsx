@@ -75,6 +75,7 @@ export default function ShowboardPage() {
   const [logsByRow, setLogsByRow] = useState<Record<number, SplitLog[]>>({});
   const [workerState, setWorkerState] = useState<WorkerState | null>(null);
   const [ackToggleBusy, setAckToggleBusy] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
 
   const fetchRows = useCallback(async (silent = false) => {
     if (!silent) {
@@ -130,6 +131,39 @@ export default function ShowboardPage() {
       alert(`Could not update thank-you email setting: ${err.message}`);
     } finally {
       setAckToggleBusy(false);
+    }
+  }
+
+  async function handleReset() {
+    if (resetBusy || splitting) return;
+    const extra: string[] = [];
+    if (workerState?.ackEmailEnabled) {
+      extra.push("Thank-you emails will go out again if that setting stays on.");
+    }
+    if (workerState?.enabled) {
+      extra.push("Auto-split is on, so pending ideas will start splitting again.");
+    }
+    const confirmed = window.confirm(
+      [
+        "Clear all split results, sent status, and thank-you flags? Original submissions stay. The board will look like a fresh start.",
+        ...extra,
+      ].join(" ")
+    );
+    if (!confirmed) return;
+
+    setResetBusy(true);
+    try {
+      const res = await fetch("/api/reset", { method: "POST" });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setLogsByRow({});
+      setStatusFilter("all");
+      await fetchRows(true);
+      await fetchWorkerState();
+    } catch (err: any) {
+      alert(`Could not reset: ${err.message}`);
+    } finally {
+      setResetBusy(false);
     }
   }
 
@@ -328,6 +362,15 @@ export default function ShowboardPage() {
                 ? "New submitters get a thank-you email"
                 : "Thank-you emails are paused"}
           </div>
+          <button
+            type="button"
+            className="danger"
+            onClick={() => void handleReset()}
+            disabled={resetBusy || Boolean(splitting)}
+            style={{ width: "100%", justifyContent: "center" }}
+          >
+            {resetBusy ? "Clearing…" : "Start over"}
+          </button>
         </div>
       </div>
 

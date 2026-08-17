@@ -22,16 +22,18 @@ function getTransporter() {
 }
 
 export async function sendIdeaEmail(
-  to: string,
+  to: string | string[],
   subject: string,
   body: string,
   attachment?: { filename: string; content: Buffer; contentType?: string },
-  html?: string
+  html?: string,
+  cc?: string | string[]
 ) {
   const transporter = getTransporter();
   await transporter.sendMail({
     from: process.env.GMAIL_SENDER_ADDRESS,
     to,
+    cc: cc && (Array.isArray(cc) ? cc.length : String(cc).trim()) ? cc : undefined,
     subject,
     text: body,
     html,

@@ -39,6 +39,17 @@ export function setAckEmailEnabled(ackEmailEnabled: boolean) {
   startWorker();
 }
 
+export function resetAutoSplitRuntime() {
+  failedUntil().clear();
+  writeAutoSplitState({
+    lastRunAt: null,
+    lastError: null,
+    currentRow: null,
+    currentName: null,
+    currentMessage: null,
+  });
+}
+
 function startWorker() {
   if (g.__ideaAutoSplitTimer) return;
   g.__ideaAutoSplitTimer = setInterval(() => {

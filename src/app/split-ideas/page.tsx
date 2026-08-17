@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { parseSplitResult, type StoredIdea } from "@/lib/split";
+import EmailChips from "@/components/EmailChips";
+import { isValidEmail, parseEmails } from "@/lib/emails";
 
 type SubmissionRow = {
   rowNumber: number;
@@ -212,8 +214,14 @@ function SplitIdeasPageInner() {
 
   async function handleSend(row: SubmissionRow, index: number) {
     const idea = ideasByRow[row.rowNumber][index];
-    if (!idea.teamEmail) {
-      alert("Enter the team's email first.");
+    const teamEmails = parseEmails(idea.teamEmail);
+    if (!teamEmails.length) {
+      alert("Enter at least one team email first.");
+      return;
+    }
+    const bad = teamEmails.find((email) => !isValidEmail(email));
+    if (bad) {
+      alert(`Not a valid email: ${bad}`);
       return;
     }
     updateIdea(row.rowNumber, index, { sending: true, error: undefined });
@@ -225,7 +233,7 @@ function SplitIdeasPageInner() {
         body: JSON.stringify({
           rowNumber: row.rowNumber,
           ideaIndex: index,
-          to: idea.teamEmail,
+          to: teamEmails,
         }),
       });
       const data = await res.json();
@@ -669,40 +677,41 @@ function SplitIdeasPageInner() {
                     background: idea.sent ? "#f8fafc" : "#fff",
                   }}
                 />
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <input
-                    placeholder="team@company.com"
+                <div style={{ display: "grid", gap: 8 }}>
+                  <EmailChips
                     value={idea.teamEmail ?? ""}
                     readOnly={idea.sent}
-                    onChange={(e) =>
-                      updateIdea(row.rowNumber, index, { teamEmail: e.target.value })
+                    placeholder="team@company.com"
+                    lockedEmails={
+                      isValidEmail(row.email)
+                        ? [{ email: row.email, label: "submitter copy" }]
+                        : []
                     }
+                    onChange={(teamEmail) => updateIdea(row.rowNumber, index, { teamEmail })}
                     onBlur={() => handleBlur(row.rowNumber)}
-                    style={{
-                      flex: "1 1 240px",
-                      minWidth: 200,
-                      background: idea.sent ? "#f8fafc" : "#fff",
-                    }}
                   />
-                  {tab === "pending" && (
-                    <button
-                      className="primary"
-                      onClick={() => handleSend(row, index)}
-                      disabled={idea.sending || idea.sent}
-                    >
-                      {idea.sending ? "Sending…" : "Send to team"}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    {tab === "pending" && (
+                      <button
+                        className="primary"
+                        onClick={() => handleSend(row, index)}
+                        disabled={idea.sending || idea.sent}
+                      >
+                        {idea.sending ? "Sending…" : "Send to team"}
+                      </button>
+                    )}
+                    <button type="button" onClick={() => handleOpenInBrowser(row, index)}>
+                      Open in browser
                     </button>
-                  )}
-                  <button type="button" onClick={() => handleOpenInBrowser(row, index)}>
-                    Open in browser
-                  </button>
-                  <button type="button" onClick={() => handleDownload(row, index)}>
-                    Download PDF
-                  </button>
+                    <button type="button" onClick={() => handleDownload(row, index)}>
+                      Download PDF
+                    </button>
+                  </div>
                 </div>
                 {idea.sent && idea.teamEmail && (
                   <div style={{ marginTop: 8, fontSize: 12, color: "var(--success)", fontWeight: 600 }}>
                     Handed over to {idea.teamEmail}
+                    {isValidEmail(row.email) ? ` · copy to ${row.email.trim()}` : ""}
                   </div>
                 )}
                 {idea.error && (
