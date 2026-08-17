@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  getAllSubmissions,
   getSubmission,
   getSubmissionsByStatus,
   saveSplitEdits,
@@ -13,19 +14,23 @@ import { ensureAutoSplitWorker } from "@/lib/autoSplitWorker";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/ideas?status=pending|split
+// GET /api/ideas?status=all|pending|split
 export async function GET(req: Request) {
   try {
     ensureAutoSplitWorker();
     const { searchParams } = new URL(req.url);
-    const status = (searchParams.get("status") || "pending") as ListStatus;
+    const status = searchParams.get("status") || "pending";
+    if (status === "all") {
+      const rows = await getAllSubmissions();
+      return NextResponse.json({ rows });
+    }
     if (status !== "pending" && status !== "split") {
       return NextResponse.json(
-        { error: "status must be pending or split" },
+        { error: "status must be all, pending, or split" },
         { status: 400 }
       );
     }
-    const rows = await getSubmissionsByStatus(status);
+    const rows = await getSubmissionsByStatus(status as ListStatus);
     return NextResponse.json({ rows });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

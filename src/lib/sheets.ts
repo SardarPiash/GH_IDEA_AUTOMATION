@@ -89,6 +89,15 @@ export async function getSubmissions(): Promise<SubmissionRow[]> {
   }
 }
 
+export function hasSubmissionContent(row: SubmissionRow): boolean {
+  return Boolean(row.rawIdeaText.trim() || row.name.trim() || row.email.trim());
+}
+
+export async function getAllSubmissions(): Promise<SubmissionRow[]> {
+  const rows = await getSubmissions();
+  return rows.filter(hasSubmissionContent);
+}
+
 export async function getSubmissionsByStatus(status: ListStatus): Promise<SubmissionRow[]> {
   const rows = await getSubmissions();
   return rows.filter(status === "pending" ? isPendingRow : isSplitRow);
