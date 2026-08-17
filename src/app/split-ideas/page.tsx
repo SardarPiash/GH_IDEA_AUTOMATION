@@ -259,7 +259,7 @@ function SplitIdeasPageInner() {
   async function handleDownload(row: SubmissionRow, index: number) {
     try {
       await persistEdits(row.rowNumber, ideasByRow[row.rowNumber]);
-      window.location.href = `/api/docx?rowNumber=${row.rowNumber}&ideaIndex=${index}`;
+      window.location.href = `/api/pdf?rowNumber=${row.rowNumber}&ideaIndex=${index}`;
     } catch (err: any) {
       alert(`Could not download: ${err.message}`);
     }
@@ -697,7 +697,7 @@ function SplitIdeasPageInner() {
                     Open in browser
                   </button>
                   <button type="button" onClick={() => handleDownload(row, index)}>
-                    Download .docx
+                    Download PDF
                   </button>
                 </div>
                 {idea.sent && idea.teamEmail && (

@@ -37,7 +37,7 @@ PIN: ${pin}
 Expected Benefit: ${benefit}
 Expected Impact: ${impact}
 
-The detailed idea document is attached to this email for your reference.
+The detailed idea proposal (PDF) is attached to this email for your reference.
 
 Please review the idea and proceed with the necessary steps from your end.
 
@@ -54,7 +54,7 @@ Growth Hack Team
   <strong>Expected Benefit:</strong> ${escapeHtml(benefit)}<br>
   <strong>Expected Impact:</strong> ${escapeHtml(impact)}
 </p>
-<p>The detailed idea document is attached to this email for your reference.</p>
+<p>The detailed idea proposal (PDF) is attached to this email for your reference.</p>
 <p>Please review the idea and proceed with the necessary steps from your end.</p>
 <p>Regards,<br><strong>Growth Hack Team</strong></p>`;
 

@@ -25,7 +25,7 @@ export async function sendIdeaEmail(
   to: string,
   subject: string,
   body: string,
-  attachment?: { filename: string; content: Buffer },
+  attachment?: { filename: string; content: Buffer; contentType?: string },
   html?: string
 ) {
   const transporter = getTransporter();
@@ -35,6 +35,14 @@ export async function sendIdeaEmail(
     subject,
     text: body,
     html,
-    attachments: attachment ? [attachment] : [],
+    attachments: attachment
+      ? [
+          {
+            filename: attachment.filename,
+            content: attachment.content,
+            contentType: attachment.contentType,
+          },
+        ]
+      : [],
   });
 }

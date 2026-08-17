@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sendIdeaEmail } from "@/lib/gmail";
 import { getSubmission, markSplitIdeaSent } from "@/lib/sheets";
 import { parseSplitResult } from "@/lib/split";
-import { buildIdeaDocx } from "@/lib/docBuilder";
+import { buildIdeaPdf } from "@/lib/pdfBuilder";
 import { ideaEmailContent, ideaEmailSubject } from "@/lib/emailTemplate";
 
 // POST /api/send -> { rowNumber, ideaIndex, to }
@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
     }
 
     const title = idea.title || "idea";
-    const docx = await buildIdeaDocx(title, idea.summary ?? "", row.rawIdeaText);
+    const meta = `${row.name || "Unknown submitter"} · PIN ${row.pin || "—"} · ${row.timestamp || "No date"}`;
+    const pdf = await buildIdeaPdf(title, idea.summary ?? "", meta);
     const { text, html } = ideaEmailContent(row, title);
 
     await sendIdeaEmail(
@@ -36,8 +37,9 @@ export async function POST(req: NextRequest) {
       ideaEmailSubject(title),
       text,
       {
-        filename: `${title}.docx`,
-        content: docx,
+        filename: `${title}.pdf`,
+        content: pdf,
+        contentType: "application/pdf",
       },
       html
     );
