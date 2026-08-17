@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { parseSplitResult } from "@/lib/split";
+import { isGhSiteAssigned } from "@/lib/teamEmails";
 
 type SubmissionRow = {
   rowNumber: number;
@@ -23,21 +24,10 @@ type SplitLog = { message: string; tone: "running" | "done" | "error" };
 type WorkerState = {
   enabled: boolean;
   ackEmailEnabled: boolean;
-};
-
-const pageStyle: React.CSSProperties = {
-  maxWidth: 920,
-  margin: "0 auto",
-  padding: "28px 24px 64px",
-};
-
-const cardStyle: React.CSSProperties = {
-  background: "var(--card)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius)",
-  boxShadow: "var(--shadow)",
-  padding: 20,
-  marginBottom: 16,
+  pendingCount?: number;
+  lastRunAt?: string | null;
+  lastError?: string | null;
+  currentMessage?: string | null;
 };
 
 function boardStatus(row: SubmissionRow): BoardStatus {
@@ -53,14 +43,16 @@ function statusLabel(status: BoardStatus) {
   return "Not split";
 }
 
-function statusStyle(status: BoardStatus): React.CSSProperties {
-  if (status === "sent") {
-    return { background: "var(--success-bg)", color: "var(--success)" };
-  }
-  if (status === "split") {
-    return { background: "#fef3c7", color: "#92400e" };
-  }
-  return { background: "var(--accent-bg)", color: "var(--primary)" };
+function badgeClass(status: BoardStatus) {
+  if (status === "sent") return "badge badge-green";
+  if (status === "split") return "badge badge-amber";
+  return "badge badge-blue";
+}
+
+function startOfToday() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
 }
 
 export default function ShowboardPage() {
@@ -103,6 +95,10 @@ export default function ShowboardPage() {
       setWorkerState({
         enabled: Boolean(data.enabled),
         ackEmailEnabled: data.ackEmailEnabled !== false,
+        pendingCount: data.pendingCount,
+        lastRunAt: data.lastRunAt ?? null,
+        lastError: data.lastError ?? null,
+        currentMessage: data.currentMessage ?? null,
       });
     }
   }, []);
@@ -126,6 +122,10 @@ export default function ShowboardPage() {
       setWorkerState({
         enabled: Boolean(data.enabled),
         ackEmailEnabled: data.ackEmailEnabled !== false,
+        pendingCount: data.pendingCount,
+        lastRunAt: data.lastRunAt ?? null,
+        lastError: data.lastError ?? null,
+        currentMessage: data.currentMessage ?? null,
       });
     } catch (err: any) {
       alert(`Could not update thank-you email setting: ${err.message}`);
@@ -171,9 +171,10 @@ export default function ShowboardPage() {
     const timer = setInterval(() => {
       if (splitting) return;
       void fetchRows(true);
+      void fetchWorkerState();
     }, 8000);
     return () => clearInterval(timer);
-  }, [fetchRows, splitting]);
+  }, [fetchRows, fetchWorkerState, splitting]);
 
   function appendLog(rowNumber: number, message: string, tone: SplitLog["tone"] = "running") {
     setLogsByRow((prev) => ({
@@ -244,11 +245,49 @@ export default function ShowboardPage() {
     }
   }
 
-  const counts = useMemo(() => {
-    const next = { all: rows.length, pending: 0, split: 0, sent: 0 };
+  const metrics = useMemo(() => {
+    const next = {
+      all: rows.length,
+      pending: 0,
+      split: 0,
+      sent: 0,
+      people: 0,
+      today: 0,
+      last7: 0,
+      ideas: 0,
+      ideasAwaiting: 0,
+      ideasSent: 0,
+      ghAssigned: 0,
+      ghAwaiting: 0,
+      ghSent: 0,
+    };
+    const people = new Set<string>();
+    const today = startOfToday();
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
     for (const row of rows) {
       next[boardStatus(row)] += 1;
+      const person = (row.email || row.pin || row.name).trim().toLowerCase();
+      if (person) people.add(person);
+      const ts = Date.parse(row.timestamp);
+      if (ts && ts >= today) next.today += 1;
+      if (ts && ts >= weekAgo) next.last7 += 1;
+      const parsed = parseSplitResult(row.splitResultJson);
+      if (!parsed) continue;
+      for (const idea of parsed.ideas) {
+        next.ideas += 1;
+        if (isGhSiteAssigned(idea)) {
+          next.ghAssigned += 1;
+          if (idea.sent) next.ghSent += 1;
+          else next.ghAwaiting += 1;
+        } else if (idea.sent) {
+          next.ideasSent += 1;
+        } else {
+          next.ideasAwaiting += 1;
+        }
+      }
     }
+    next.people = people.size;
     return next;
   }, [rows]);
 
@@ -259,7 +298,7 @@ export default function ShowboardPage() {
       const status = boardStatus(row);
       if (statusFilter !== "all" && status !== statusFilter) return false;
       if (!needle) return true;
-      const hay = `${row.name} ${row.pin} ${row.email}`.toLowerCase();
+      const hay = `${row.name} ${row.pin} ${row.email} ${row.rawIdeaText}`.toLowerCase();
       return hay.includes(needle);
     });
     const dir = sortDir === "asc" ? 1 : -1;
@@ -287,17 +326,18 @@ export default function ShowboardPage() {
 
   if (loading) {
     return (
-      <main style={pageStyle}>
-        <p style={{ color: "var(--muted)" }}>Loading showboard…</p>
+      <main className="page-shell">
+        <p className="page-kicker">Dashboard</p>
+        <p style={{ color: "var(--muted)" }}>Loading live metrics…</p>
       </main>
     );
   }
 
   if (loadError) {
     return (
-      <main style={pageStyle}>
-        <h1 style={{ fontSize: 24, margin: "0 0 12px" }}>Showboard</h1>
-        <div style={{ ...cardStyle, background: "var(--danger-bg)", borderColor: "#fecaca" }}>
+      <main className="page-shell">
+        <h1>Dashboard</h1>
+        <div className="panel is-danger">
           <strong>Couldn’t load the sheet</strong>
           <pre style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{loadError}</pre>
         </div>
@@ -306,33 +346,17 @@ export default function ShowboardPage() {
   }
 
   return (
-    <main style={pageStyle}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 16,
-          alignItems: "flex-start",
-          marginBottom: 20,
-        }}
-      >
-        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-          <h1 style={{ fontSize: 24, letterSpacing: "-0.03em", margin: "0 0 6px" }}>Showboard</h1>
-          <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, maxWidth: 640 }}>
-            Every original submission, not the split cards. Use this to see what is waiting,
-            already split, or sent.
+    <main className="page-shell">
+      <div className="page-hero">
+        <div>
+          <p className="page-kicker">Operations overview</p>
+          <h1>Idea dashboard</h1>
+          <p>
+            Live view of every submission, split idea, handover, and GH site assignment.
+            Filter the list below or jump into a queue.
           </p>
         </div>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "stretch",
-            gap: 6,
-            flex: "0 0 220px",
-            width: 220,
-          }}
-        >
+        <div className="hero-actions">
           <button
             type="button"
             className="switch"
@@ -340,7 +364,6 @@ export default function ShowboardPage() {
             aria-checked={workerState?.ackEmailEnabled ?? false}
             disabled={ackToggleBusy || !workerState}
             onClick={() => void handleAckEmailToggle()}
-            style={{ width: "100%", justifyContent: "flex-start" }}
           >
             <span className="switch-track" aria-hidden="true">
               <span className="switch-thumb" />
@@ -348,63 +371,66 @@ export default function ShowboardPage() {
             Thank-you email{" "}
             <span className="switch-label">{workerState?.ackEmailEnabled ? "On" : "Off"}</span>
           </button>
-          <div
-            style={{
-              fontSize: 12,
-              color: workerState?.ackEmailEnabled ? "var(--success)" : "var(--muted)",
-              textAlign: "right",
-              minHeight: 32,
-            }}
-          >
-            {ackToggleBusy
-              ? "Updating…"
-              : workerState?.ackEmailEnabled
-                ? "New submitters get a thank-you email"
-                : "Thank-you emails are paused"}
-          </div>
           <button
             type="button"
             className="danger"
             onClick={() => void handleReset()}
             disabled={resetBusy || Boolean(splitting)}
-            style={{ width: "100%", justifyContent: "center" }}
           >
             {resetBusy ? "Clearing…" : "Start over"}
           </button>
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-          gap: 10,
-          marginBottom: 16,
-        }}
-      >
+      {workerState?.lastError && (
+        <div className="panel is-danger">
+          <strong>Auto-split error:</strong> {workerState.lastError}
+        </div>
+      )}
+
+      <div className="metric-grid">
         {(
           [
-            ["all", "All", counts.all],
-            ["pending", "Not split", counts.pending],
-            ["split", "Split", counts.split],
-            ["sent", "Sent", counts.sent],
+            ["all", "Submissions", metrics.all, `${metrics.people} people · ${metrics.today} today`, "is-slate"],
+            ["pending", "Not split", metrics.pending, "Waiting in inbox", "is-blue"],
+            ["split", "Split", metrics.split, `${metrics.ideas} idea cards`, "is-amber"],
+            ["sent", "Fully sent", metrics.sent, "All ideas handed over", "is-green"],
           ] as const
-        ).map(([id, label, count]) => (
+        ).map(([id, label, count, hint, tone]) => (
           <button
             key={id}
             type="button"
+            className={`metric-card ${tone}${statusFilter === id ? " is-active" : ""}`}
             onClick={() => setStatusFilter(id)}
-            style={{
-              textAlign: "left",
-              padding: "12px 14px",
-              background: statusFilter === id ? "var(--accent-bg)" : "var(--card)",
-              borderColor: statusFilter === id ? "#bfdbfe" : "var(--border)",
-            }}
           >
-            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>{label}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, marginTop: 2 }}>{count}</div>
+            <div className="label">{label}</div>
+            <div className="value">{count}</div>
+            <div className="hint">{hint}</div>
           </button>
         ))}
+      </div>
+
+      <div className="metric-grid">
+        <Link className="metric-card is-blue" href="/split-ideas">
+          <div className="label">Awaiting send</div>
+          <div className="value">{metrics.ideasAwaiting}</div>
+          <div className="hint">Open Split ideas</div>
+        </Link>
+        <Link className="metric-card is-amber" href="/gh-site">
+          <div className="label">GH site queue</div>
+          <div className="value">{metrics.ghAssigned}</div>
+          <div className="hint">{metrics.ghAwaiting} waiting · {metrics.ghSent} sent</div>
+        </Link>
+        <div className="metric-card is-green">
+          <div className="label">Ideas sent</div>
+          <div className="value">{metrics.ideasSent + metrics.ghSent}</div>
+          <div className="hint">Handed over to teams</div>
+        </div>
+        <div className="metric-card">
+          <div className="label">This week</div>
+          <div className="value">{metrics.last7}</div>
+          <div className="hint">New submissions in 7 days</div>
+        </div>
       </div>
 
       <div className="toolbar">
@@ -412,8 +438,8 @@ export default function ShowboardPage() {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name, PIN, or email"
-          aria-label="Search by name, PIN, or email"
+          placeholder="Search name, PIN, email, or idea text"
+          aria-label="Search submissions"
           style={{ flex: "1 1 240px", minWidth: 200 }}
         />
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
@@ -451,8 +477,8 @@ export default function ShowboardPage() {
       </div>
 
       {visibleRows.length === 0 && (
-        <div style={cardStyle}>
-          <p style={{ margin: 0, color: "var(--muted)" }}>
+        <div className="panel">
+          <p className="panel-empty">
             {rows.length === 0
               ? "No submissions in the sheet yet."
               : needle
@@ -466,50 +492,34 @@ export default function ShowboardPage() {
         const status = boardStatus(row);
         const parsed = parseSplitResult(row.splitResultJson);
         const logs = logsByRow[row.rowNumber] ?? [];
+        const ghCount = parsed?.ideas.filter(isGhSiteAssigned).length ?? 0;
+        const sentCount = parsed?.ideas.filter((idea) => idea.sent).length ?? 0;
         return (
-          <section key={row.rowNumber} style={cardStyle}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-                alignItems: "flex-start",
-                marginBottom: 12,
-              }}
-            >
+          <section key={row.rowNumber} className="panel">
+            <div className="card-head">
               <div>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>{row.name || "Unknown submitter"}</div>
-                <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 2 }}>
+                <div className="card-title">{row.name || "Unknown submitter"}</div>
+                <div className="card-meta">
                   PIN {row.pin || "—"} · {row.email || "No email"} · {row.timestamp || "No date"}
                 </div>
               </div>
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  padding: "4px 8px",
-                  borderRadius: 999,
-                  ...statusStyle(status),
-                }}
-              >
+              <span className={badgeClass(status)}>
                 {statusLabel(status)}
                 {parsed ? ` · ${parsed.ideaCount} idea${parsed.ideaCount === 1 ? "" : "s"}` : ""}
               </span>
             </div>
 
-            <pre
-              style={{
-                whiteSpace: "pre-wrap",
-                fontFamily: "inherit",
-                fontSize: 14,
-                margin: "0 0 14px",
-                lineHeight: 1.5,
-              }}
-            >
-              {row.rawIdeaText || "No idea text"}
-            </pre>
+            {parsed && (
+              <div className="status-pills" style={{ marginBottom: 12 }}>
+                <span className="status-pill">{sentCount} sent</span>
+                <span className="status-pill">{Math.max(parsed.ideaCount - sentCount, 0)} awaiting send</span>
+                {ghCount > 0 && <span className="status-pill">{ghCount} on GH site</span>}
+              </div>
+            )}
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <pre className="idea-excerpt">{row.rawIdeaText || "No idea text"}</pre>
+
+            <div className="action-row">
               {status === "pending" && (
                 <button
                   type="button"
@@ -522,13 +532,18 @@ export default function ShowboardPage() {
               )}
               {status !== "pending" && (
                 <Link href={`/split-ideas?row=${row.rowNumber}`}>
-                  <button type="button">Open split ideas</button>
+                  <button type="button" className="primary">Open split ideas</button>
+                </Link>
+              )}
+              {ghCount > 0 && (
+                <Link href={`/gh-site?row=${row.rowNumber}`}>
+                  <button type="button">Open GH site</button>
                 </Link>
               )}
             </div>
 
             {logs.length > 0 && (
-              <div style={{ fontSize: 12, lineHeight: 1.45, marginTop: 10 }}>
+              <div className="log-list">
                 {logs.map((log, i) => (
                   <div
                     key={i}

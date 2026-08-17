@@ -40,21 +40,6 @@ type AutoSplitState = {
   pendingCount: number;
 };
 
-const pageStyle: React.CSSProperties = {
-  maxWidth: 920,
-  margin: "0 auto",
-  padding: "28px 24px 64px",
-};
-
-const cardStyle: React.CSSProperties = {
-  background: "var(--card)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius)",
-  boxShadow: "var(--shadow)",
-  padding: 20,
-  marginBottom: 16,
-};
-
 function ideasFromRow(row: SubmissionRow): EditableIdea[] | null {
   const parsed = parseSplitResult(row.splitResultJson);
   if (!parsed) return null;
@@ -77,7 +62,7 @@ export function SplitIdeasBoard({ queue }: { queue: IdeaQueue }) {
   return (
     <Suspense
       fallback={
-        <main style={pageStyle}>
+        <main className="page-shell">
           <p style={{ color: "var(--muted)" }}>
             {queue === "gh-site" ? "Loading GH site assignments…" : "Loading split ideas…"}
           </p>
@@ -448,7 +433,8 @@ function SplitIdeasPageInner({ queue }: { queue: IdeaQueue }) {
 
   if (loading) {
     return (
-      <main style={pageStyle}>
+      <main className="page-shell">
+        <p className="page-kicker">{queue === "gh-site" ? "GH site team" : "Review"}</p>
         <p style={{ color: "var(--muted)" }}>
           {queue === "gh-site" ? "Loading GH site assignments…" : "Loading split ideas…"}
         </p>
@@ -458,11 +444,9 @@ function SplitIdeasPageInner({ queue }: { queue: IdeaQueue }) {
 
   if (loadError) {
     return (
-      <main style={pageStyle}>
-        <h1 style={{ fontSize: 24, margin: "0 0 12px" }}>
-          {queue === "gh-site" ? "Assigned to GH site team" : "Split ideas"}
-        </h1>
-        <div style={{ ...cardStyle, background: "var(--danger-bg)", borderColor: "#fecaca" }}>
+      <main className="page-shell">
+        <h1>{queue === "gh-site" ? "Assigned to GH site team" : "Split ideas"}</h1>
+        <div className="panel is-danger">
           <strong>Couldn’t load the sheet</strong>
           <pre style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{loadError}</pre>
         </div>
@@ -471,37 +455,19 @@ function SplitIdeasPageInner({ queue }: { queue: IdeaQueue }) {
   }
 
   return (
-    <main style={pageStyle}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 16,
-          alignItems: "flex-start",
-          marginBottom: 20,
-        }}
-      >
-        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-          <h1 style={{ fontSize: 24, letterSpacing: "-0.03em", margin: "0 0 6px" }}>
-            {queue === "gh-site" ? "Assigned to GH site team" : "Split ideas"}
-          </h1>
-          <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, maxWidth: 560 }}>
+    <main className="page-shell">
+      <div className="page-hero">
+        <div>
+          <p className="page-kicker">{queue === "gh-site" ? "Assigned queue" : "Review queue"}</p>
+          <h1>{queue === "gh-site" ? "Assigned to GH site team" : "Split ideas"}</h1>
+          <p>
             {queue === "gh-site"
               ? "Ideas handed over from Split ideas for the GH site team. They no longer appear in the main review tabs."
-              : "Each original submission is one card. Assign an idea to GH site to move it out of these review tabs."}
+              : "Review each split idea, send it to a team, or assign it to GH site to move it out of this queue."}
           </p>
         </div>
         {queue === "review" && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "stretch",
-            gap: 6,
-            flex: "0 0 220px",
-            width: 220,
-          }}
-        >
+        <div className="hero-actions">
           <button
             type="button"
             className="switch"
@@ -516,14 +482,7 @@ function SplitIdeasPageInner({ queue }: { queue: IdeaQueue }) {
             </span>
             Auto-split <span className="switch-label">{enabled ? "On" : "Off"}</span>
           </button>
-          <div
-            style={{
-              fontSize: 12,
-              color: enabled ? "var(--success)" : "var(--muted)",
-              textAlign: "right",
-              minHeight: 32,
-            }}
-          >
+          <div className={`hero-note ${enabled ? "is-on" : "is-off"}`}>
             {toggleBusy ? "Updating…" : statusText}
           </div>
         </div>
@@ -531,19 +490,40 @@ function SplitIdeasPageInner({ queue }: { queue: IdeaQueue }) {
       </div>
 
       {queue === "review" && autoSplit?.lastError && (
-        <div style={{ ...cardStyle, background: "var(--danger-bg)", borderColor: "#fecaca", padding: 14 }}>
+        <div className="panel is-danger">
           <strong>Auto-split error:</strong> {autoSplit.lastError}
         </div>
       )}
 
       {queue === "review" && enabled && autoSplit?.currentRow && (
-        <section style={{ ...cardStyle, background: "var(--accent-bg)", borderColor: "#bfdbfe" }}>
+        <section className="panel is-info">
           <div style={{ fontWeight: 700, marginBottom: 4 }}>
             Splitting now · {autoSplit.currentName || `Row ${autoSplit.currentRow}`}
           </div>
           <div style={{ color: "var(--primary)", fontSize: 13 }}>{autoSplit.currentMessage}</div>
         </section>
       )}
+
+      <div className="metric-grid">
+        <button
+          type="button"
+          className={`metric-card is-blue${tab === "pending" ? " is-active" : ""}`}
+          onClick={() => setTab("pending")}
+        >
+          <div className="label">Not reviewed</div>
+          <div className="value">{counts.pending}</div>
+          <div className="hint">Waiting to send</div>
+        </button>
+        <button
+          type="button"
+          className={`metric-card is-green${tab === "reviewed" ? " is-active" : ""}`}
+          onClick={() => setTab("reviewed")}
+        >
+          <div className="label">Reviewed</div>
+          <div className="value">{counts.reviewed}</div>
+          <div className="hint">Already handed over</div>
+        </button>
+      </div>
 
       <div className="toolbar">
         <input
@@ -587,18 +567,7 @@ function SplitIdeasPageInner({ queue }: { queue: IdeaQueue }) {
         </div>
       </div>
 
-      <div
-        role="tablist"
-        style={{
-          display: "flex",
-          gap: 4,
-          padding: 4,
-          background: "#e8edf3",
-          borderRadius: 10,
-          width: "fit-content",
-          marginBottom: 20,
-        }}
-      >
+      <div className="tablist" role="tablist">
         <TabButton
           active={tab === "pending"}
           onClick={() => setTab("pending")}
@@ -614,8 +583,8 @@ function SplitIdeasPageInner({ queue }: { queue: IdeaQueue }) {
       </div>
 
       {visibleSubmissionGroups.length === 0 && (
-        <div style={cardStyle}>
-          <p style={{ margin: 0, color: "var(--muted)" }}>
+        <div className="panel">
+          <p className="panel-empty">
             {rows.length === 0
               ? queue === "gh-site"
                 ? "No ideas have been assigned to the GH site team yet."
@@ -641,103 +610,33 @@ function SplitIdeasPageInner({ queue }: { queue: IdeaQueue }) {
         <article
           key={row.rowNumber}
           id={`submission-${row.rowNumber}`}
-          style={{
-            ...cardStyle,
-            ...(isFocused
-              ? { borderColor: "#93c5fd", boxShadow: "0 0 0 2px #bfdbfe, var(--shadow)" }
-              : {}),
-          }}
+          className={`panel${isFocused ? " is-focus" : ""}`}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 12,
-              alignItems: "flex-start",
-              marginBottom: 12,
-            }}
-          >
+          <div className="card-head">
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{row.name || "Unknown submitter"}</div>
-              <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 2 }}>
+              <div className="card-title">{row.name || "Unknown submitter"}</div>
+              <div className="card-meta">
                 PIN {row.pin || "—"} · {row.email || "No email"} · {row.timestamp || "No date"}
               </div>
             </div>
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                padding: "4px 10px",
-                borderRadius: 999,
-                background: "var(--accent-bg)",
-                color: "var(--primary)",
-              }}
-            >
+            <span className="badge badge-blue">
               {totalSplitCount} split idea{totalSplitCount === 1 ? "" : "s"}
             </span>
           </div>
 
-          <details style={{ marginBottom: 16 }}>
-            <summary
-              style={{
-                cursor: "pointer",
-                color: "var(--muted)",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
-              Original submission
-            </summary>
-            <pre
-              style={{
-                whiteSpace: "pre-wrap",
-                fontFamily: "inherit",
-                fontSize: 13,
-                background: "#f8fafc",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: 12,
-                margin: "8px 0 0",
-                color: "#334155",
-              }}
-            >
-              {row.rawIdeaText}
-            </pre>
+          <details className="original-details">
+            <summary>Original submission</summary>
+            <pre>{row.rawIdeaText}</pre>
           </details>
 
-          <div style={{ display: "grid", gap: 14 }}>
+          <div>
             {ideas.map(({ idea, index }) => (
-              <section
-                key={index}
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  padding: 14,
-                  background: "#fbfcfe",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 8,
-                    marginBottom: 10,
-                  }}
-                >
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+              <section key={index} className="idea-box">
+                <div className="card-head">
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>
                     Split idea {index + 1} of {totalSplitCount}
                   </span>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      padding: "3px 8px",
-                      borderRadius: 999,
-                      background: idea.sent ? "var(--success-bg)" : "var(--accent-bg)",
-                      color: idea.sent ? "var(--success)" : "var(--primary)",
-                    }}
-                  >
+                  <span className={idea.sent ? "badge badge-green" : "badge badge-blue"}>
                     {idea.sent ? "Sent" : "Awaiting send"}
                   </span>
                 </div>
@@ -796,7 +695,7 @@ function SplitIdeasPageInner({ queue }: { queue: IdeaQueue }) {
                       </span>
                     </label>
                   )}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <div className="action-row">
                     {tab === "pending" && (
                       <button
                         className="primary"
@@ -859,30 +758,12 @@ function TabButton({
     <button
       type="button"
       role="tab"
+      className="tab-btn"
       aria-selected={active}
       onClick={onClick}
-      style={{
-        border: "none",
-        background: active ? "#fff" : "transparent",
-        boxShadow: active ? "0 1px 2px rgba(15, 23, 42, 0.08)" : "none",
-        color: active ? "var(--text)" : "var(--muted)",
-        padding: "8px 14px",
-        borderRadius: 8,
-      }}
     >
       {label}
-      <span
-        style={{
-          marginLeft: 8,
-          fontSize: 12,
-          background: active ? "var(--accent-bg)" : "#dbe3ee",
-          color: active ? "var(--primary)" : "var(--muted)",
-          borderRadius: 999,
-          padding: "1px 7px",
-        }}
-      >
-        {count}
-      </span>
+      <span className="tab-count">{count}</span>
     </button>
   );
 }
