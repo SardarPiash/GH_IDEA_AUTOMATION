@@ -8,6 +8,7 @@ import {
 } from "@/lib/sheets";
 import type { StoredIdea } from "@/lib/split";
 import { splitIdeas } from "@/lib/classifier";
+import { ensureAutoSplitWorker } from "@/lib/autoSplitWorker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 // GET /api/ideas?status=pending|split
 export async function GET(req: Request) {
   try {
+    ensureAutoSplitWorker();
     const { searchParams } = new URL(req.url);
     const status = (searchParams.get("status") || "pending") as ListStatus;
     if (status !== "pending" && status !== "split") {

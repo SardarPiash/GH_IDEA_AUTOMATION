@@ -42,3 +42,6 @@ Thumbs.db
 
 # Vercel
 .vercel
+
+# Local auto-split on/off state
+.auto-split.json
