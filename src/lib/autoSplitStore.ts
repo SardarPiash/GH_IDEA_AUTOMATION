@@ -12,7 +12,10 @@ export type AutoSplitState = {
   pendingCount: number;
 };
 
-const FILE = path.join(process.cwd(), ".auto-split.json");
+const FILE = path.resolve(
+  process.env.AUTO_SPLIT_STATE_PATH?.trim() ||
+    path.join(process.cwd(), ".auto-split.json")
+);
 
 const DEFAULT_STATE: AutoSplitState = {
   enabled: false,

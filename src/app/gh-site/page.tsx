@@ -1,6 +1,6 @@
 "use client";
 
-import { SplitIdeasBoard } from "../split-ideas/page";
+import { SplitIdeasBoard } from "@/components/SplitIdeasBoard";
 
 export default function GhSiteTeamPage() {
   return <SplitIdeasBoard queue="gh-site" />;

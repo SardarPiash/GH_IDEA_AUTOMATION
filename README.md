@@ -56,8 +56,24 @@ cp .env.local.example .env.local
 # CODEX_GATEWAY_KEY, GMAIL_SENDER_ADDRESS, GMAIL_APP_PASSWORD
 
 npm install
-npm run dev                 # http://localhost:3000
+npm run dev                 # http://localhost:1111
 ```
+
+The app always uses port **1111** (`npm run dev`, `npm start`, and Docker).
+
+### Docker
+```bash
+cp .env.local.example .env.local   # if you have not already
+docker compose up --build
+# http://localhost:1111
+```
+
+Compose mounts `.env.local` into the container (so quoted Google private
+keys work) and maps host **1111**. Auto-split on/off state is stored in a
+Docker volume. PDF generation uses Chromium inside the image. Gemini works
+from env vars; Cursor and Codex stay host CLIs, so they only work in Docker
+if you mount those binaries yourself. Otherwise the splitter falls back to
+Gemini.
 
 ## How it works
 - `GET /api/ideas` — reads all rows from your Sheet copy

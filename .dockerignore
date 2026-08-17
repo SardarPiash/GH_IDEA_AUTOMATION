@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.gitignore
+.cursor
+.vscode
+.idea
+*.log
+.env
+.env.*
+!.env.example
+!.env.local.example
+!.env*.example
+.auto-split.json
+.DS_Store
+README.md
+agent-transcripts
