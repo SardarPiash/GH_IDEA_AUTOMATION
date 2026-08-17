@@ -60,6 +60,7 @@ function ideasFromRow(row: SubmissionRow): EditableIdea[] | null {
     title: idea.title ?? "",
     summary: idea.summary ?? "",
     teamEmail: idea.teamEmail ?? "",
+    ccSubmitter: Boolean(idea.ccSubmitter),
     sent: Boolean(idea.sent) || row.status === "sent",
     sending: false,
   }));
@@ -91,6 +92,7 @@ function SplitIdeasPageInner() {
   const [autoSplit, setAutoSplit] = useState<AutoSplitState | null>(null);
   const [toggleBusy, setToggleBusy] = useState(false);
   const dirtyRows = useRef(new Set<number>());
+  const ideasByRowRef = useRef<Record<number, EditableIdea[]>>({});
   const focusedOnce = useRef(false);
   const scrolledOnce = useRef(false);
   const searchParams = useSearchParams();
@@ -101,10 +103,45 @@ function SplitIdeasPageInner() {
     setIdeasByRow((prev) => {
       const next = { ...prev };
       for (const row of nextRows) {
-        if (dirtyRows.current.has(row.rowNumber) && next[row.rowNumber]) continue;
-        const ideas = ideasFromRow(row);
-        if (ideas) next[row.rowNumber] = ideas;
+        const incoming = ideasFromRow(row);
+        if (!incoming) continue;
+        const local = next[row.rowNumber];
+        if (local && dirtyRows.current.has(row.rowNumber)) {
+          const serverMatches = local.every((idea, i) => {
+            const remote = incoming[i];
+            return (
+              remote &&
+              (idea.teamEmail ?? "") === (remote.teamEmail ?? "") &&
+              Boolean(idea.ccSubmitter) === Boolean(remote.ccSubmitter) &&
+              idea.title === remote.title &&
+              idea.summary === remote.summary
+            );
+          });
+          if (!serverMatches) {
+            next[row.rowNumber] = incoming.map((idea, i) => {
+              const prevIdea = local[i];
+              if (!prevIdea) return idea;
+              return {
+                ...idea,
+                title: prevIdea.title,
+                summary: prevIdea.summary,
+                teamEmail: prevIdea.teamEmail,
+                ccSubmitter: prevIdea.ccSubmitter,
+                sending: prevIdea.sending,
+                error: prevIdea.error,
+              };
+            });
+            continue;
+          }
+          dirtyRows.current.delete(row.rowNumber);
+        }
+        next[row.rowNumber] = incoming.map((idea, i) => ({
+          ...idea,
+          sending: local?.[i]?.sending ?? false,
+          error: local?.[i]?.error,
+        }));
       }
+      ideasByRowRef.current = next;
       return next;
     });
   }, []);
@@ -176,34 +213,36 @@ function SplitIdeasPageInner() {
 
   function updateIdea(rowNumber: number, index: number, patch: Partial<EditableIdea>) {
     dirtyRows.current.add(rowNumber);
-    setIdeasByRow((prev) => ({
-      ...prev,
-      [rowNumber]: prev[rowNumber].map((idea, i) => (i === index ? { ...idea, ...patch } : idea)),
-    }));
+    const current = ideasByRowRef.current[rowNumber] ?? ideasByRow[rowNumber];
+    const nextIdeas = current.map((idea, i) => (i === index ? { ...idea, ...patch } : idea));
+    ideasByRowRef.current = { ...ideasByRowRef.current, [rowNumber]: nextIdeas };
+    setIdeasByRow((prev) => ({ ...prev, [rowNumber]: nextIdeas }));
   }
 
   function storedIdeas(ideas: EditableIdea[]): StoredIdea[] {
-    return ideas.map(({ title, summary, teamEmail, sent }) => ({
+    return ideas.map(({ title, summary, teamEmail, ccSubmitter, sent }) => ({
       title,
       summary,
       teamEmail,
+      ccSubmitter,
       sent,
     }));
   }
 
-  async function persistEdits(rowNumber: number, ideas: EditableIdea[]) {
+  async function persistEdits(rowNumber: number, ideas?: EditableIdea[]) {
+    const payload = ideas ?? ideasByRowRef.current[rowNumber];
+    if (!payload) return;
     const res = await fetch("/api/ideas", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rowNumber, ideas: storedIdeas(ideas) }),
+      body: JSON.stringify({ rowNumber, ideas: storedIdeas(payload) }),
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    dirtyRows.current.delete(rowNumber);
   }
 
   async function handleBlur(rowNumber: number) {
-    const ideas = ideasByRow[rowNumber];
+    const ideas = ideasByRowRef.current[rowNumber];
     if (!ideas) return;
     try {
       await persistEdits(rowNumber, ideas);
@@ -213,7 +252,8 @@ function SplitIdeasPageInner() {
   }
 
   async function handleSend(row: SubmissionRow, index: number) {
-    const idea = ideasByRow[row.rowNumber][index];
+    const idea = ideasByRowRef.current[row.rowNumber]?.[index];
+    if (!idea) return;
     const teamEmails = parseEmails(idea.teamEmail);
     if (!teamEmails.length) {
       alert("Enter at least one team email first.");
@@ -226,7 +266,7 @@ function SplitIdeasPageInner() {
     }
     updateIdea(row.rowNumber, index, { sending: true, error: undefined });
     try {
-      await persistEdits(row.rowNumber, ideasByRow[row.rowNumber]);
+      await persistEdits(row.rowNumber);
       const res = await fetch("/api/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -234,12 +274,12 @@ function SplitIdeasPageInner() {
           rowNumber: row.rowNumber,
           ideaIndex: index,
           to: teamEmails,
+          ccSubmitter: Boolean(idea.ccSubmitter),
         }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       updateIdea(row.rowNumber, index, { sending: false, sent: true });
-      dirtyRows.current.delete(row.rowNumber);
       if (data.allSent) {
         setRows((prev) =>
           prev.map((r) => (r.rowNumber === row.rowNumber ? { ...r, status: "sent" } : r))
@@ -253,7 +293,7 @@ function SplitIdeasPageInner() {
 
   async function handleOpenInBrowser(row: SubmissionRow, index: number) {
     try {
-      await persistEdits(row.rowNumber, ideasByRow[row.rowNumber]);
+      await persistEdits(row.rowNumber);
       window.open(
         `/doc?rowNumber=${row.rowNumber}&ideaIndex=${index}`,
         "_blank",
@@ -266,7 +306,7 @@ function SplitIdeasPageInner() {
 
   async function handleDownload(row: SubmissionRow, index: number) {
     try {
-      await persistEdits(row.rowNumber, ideasByRow[row.rowNumber]);
+      await persistEdits(row.rowNumber);
       window.location.href = `/api/pdf?rowNumber=${row.rowNumber}&ideaIndex=${index}`;
     } catch (err: any) {
       alert(`Could not download: ${err.message}`);
@@ -682,14 +722,27 @@ function SplitIdeasPageInner() {
                     value={idea.teamEmail ?? ""}
                     readOnly={idea.sent}
                     placeholder="team@company.com"
-                    lockedEmails={
-                      isValidEmail(row.email)
-                        ? [{ email: row.email, label: "submitter copy" }]
-                        : []
-                    }
+                    onTyping={() => dirtyRows.current.add(row.rowNumber)}
                     onChange={(teamEmail) => updateIdea(row.rowNumber, index, { teamEmail })}
                     onBlur={() => handleBlur(row.rowNumber)}
                   />
+                  {isValidEmail(row.email) && (
+                    <label className="email-copy-check">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(idea.ccSubmitter)}
+                        disabled={idea.sent}
+                        onChange={(e) =>
+                          updateIdea(row.rowNumber, index, { ccSubmitter: e.target.checked })
+                        }
+                        onBlur={() => handleBlur(row.rowNumber)}
+                      />
+                      <span>
+                        Also send a copy to the submitter
+                        <span className="email-copy-check-address"> ({row.email.trim()})</span>
+                      </span>
+                    </label>
+                  )}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     {tab === "pending" && (
                       <button
@@ -711,7 +764,9 @@ function SplitIdeasPageInner() {
                 {idea.sent && idea.teamEmail && (
                   <div style={{ marginTop: 8, fontSize: 12, color: "var(--success)", fontWeight: 600 }}>
                     Handed over to {idea.teamEmail}
-                    {isValidEmail(row.email) ? ` · copy to ${row.email.trim()}` : ""}
+                    {idea.ccSubmitter && isValidEmail(row.email)
+                      ? ` · copy to ${row.email.trim()}`
+                      : ""}
                   </div>
                 )}
                 {idea.error && (

@@ -3,35 +3,27 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { formatEmails, isValidEmail, parseEmails } from "@/lib/emails";
 
-type LockedEmail = {
-  email: string;
-  label?: string;
-};
-
 type EmailChipsProps = {
   value: string;
   onChange: (value: string) => void;
+  onTyping?: () => void;
   onBlur?: () => void;
   readOnly?: boolean;
   placeholder?: string;
-  lockedEmails?: LockedEmail[];
 };
 
 export default function EmailChips({
   value,
   onChange,
+  onTyping,
   onBlur,
   readOnly,
   placeholder = "Add team emails",
-  lockedEmails = [],
 }: EmailChipsProps) {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const emails = parseEmails(value);
-  const locked = parseEmails(lockedEmails.map((item) => item.email).join(",")).filter(isValidEmail);
-  const lockedSet = new Set(locked);
-  const editable = emails.filter((email) => !lockedSet.has(email));
 
   useEffect(() => {
     if (!error) return;
@@ -54,7 +46,7 @@ export default function EmailChips({
       setError(`Not a valid email: ${invalid[0]}`);
       return false;
     }
-    onChange(formatEmails([...editable, ...parts].filter((email) => !lockedSet.has(email))));
+    onChange(formatEmails([...emails, ...parts]));
     setDraft(nextDraft);
     setError(null);
     scheduleBlur();
@@ -62,8 +54,8 @@ export default function EmailChips({
   }
 
   function remove(email: string) {
-    if (readOnly || lockedSet.has(email)) return;
-    onChange(formatEmails(editable.filter((item) => item !== email)));
+    if (readOnly) return;
+    onChange(formatEmails(emails.filter((item) => item !== email)));
     scheduleBlur();
   }
 
@@ -75,9 +67,9 @@ export default function EmailChips({
       commit(draft);
       return;
     }
-    if (event.key === "Backspace" && !draft && editable.length) {
+    if (event.key === "Backspace" && !draft && emails.length) {
       event.preventDefault();
-      remove(editable[editable.length - 1]);
+      remove(emails[emails.length - 1]);
     }
   }
 
@@ -91,11 +83,10 @@ export default function EmailChips({
 
   function handleBlur() {
     if (draft.trim()) commit(draft);
-    onBlur?.();
+    else onBlur?.();
   }
 
-  const shownLocked = lockedEmails.filter((item) => isValidEmail(item.email));
-  const empty = editable.length === 0 && shownLocked.length === 0 && !draft;
+  const empty = emails.length === 0 && !draft;
 
   return (
     <div>
@@ -103,13 +94,7 @@ export default function EmailChips({
         className={`email-chips${readOnly ? " is-readonly" : ""}`}
         onClick={() => inputRef.current?.focus()}
       >
-        {shownLocked.map((item) => (
-          <span key={`locked-${item.email}`} className="email-chip is-locked" title="Always gets a copy">
-            <span className="email-chip-text">{item.email}</span>
-            <span className="email-chip-tag">{item.label || "copy"}</span>
-          </span>
-        ))}
-        {editable.map((email) => (
+        {emails.map((email) => (
           <span key={email} className="email-chip">
             <span className="email-chip-text">{email}</span>
             {!readOnly && (
@@ -132,7 +117,10 @@ export default function EmailChips({
             ref={inputRef}
             className="email-chips-input"
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              onTyping?.();
+            }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             onBlur={handleBlur}
@@ -150,8 +138,7 @@ export default function EmailChips({
         <div className="email-chips-hint is-error">{error}</div>
       ) : (
         <div className="email-chips-hint">
-          Press Enter or comma to add more. One send goes to every address
-          {shownLocked.length ? ", plus a copy to the submitter" : ""}.
+          Press Enter or comma to add more. One send goes to every address.
         </div>
       )}
     </div>

@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   }
 }
 
-// POST /api/ideas { rowNumber } -> streams status, then Codex/Gemini result
+// POST /api/ideas { rowNumber } -> streams status, then Cursor/Gemini/Codex result
 export async function POST(req: Request) {
   const { rowNumber } = await req.json();
   if (!rowNumber) {

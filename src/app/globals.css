@@ -192,6 +192,36 @@ textarea:focus {
   font-weight: 600;
 }
 
+.email-copy-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.email-copy-check input {
+  margin-top: 2px;
+  accent-color: var(--primary);
+}
+
+.email-copy-check input:disabled {
+  cursor: not-allowed;
+}
+
+.email-copy-check:has(input:disabled) {
+  cursor: not-allowed;
+  color: var(--muted);
+}
+
+.email-copy-check-address {
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .app-header {
   background: #fff;
   border-bottom: 1px solid var(--border);

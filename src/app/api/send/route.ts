@@ -9,7 +9,7 @@ import { formatEmails, invalidEmails, isValidEmail, parseEmails } from "@/lib/em
 // POST /api/send -> { rowNumber, ideaIndex, to }
 export async function POST(req: NextRequest) {
   try {
-    const { rowNumber, ideaIndex, to } = await req.json();
+    const { rowNumber, ideaIndex, to, ccSubmitter } = await req.json();
     if (rowNumber == null || ideaIndex == null || !to) {
       return NextResponse.json(
         { error: "rowNumber, ideaIndex, and to are required" },
@@ -45,7 +45,11 @@ export async function POST(req: NextRequest) {
     const pdf = await buildIdeaPdf(title, idea.summary ?? "", meta);
     const { text, html } = ideaEmailContent(row, title);
     const submitter = parseEmails(row.email)[0];
-    const cc = submitter && isValidEmail(submitter) && !teamEmails.includes(submitter) ? [submitter] : [];
+    const includeSubmitter = Boolean(ccSubmitter ?? idea.ccSubmitter);
+    const cc =
+      includeSubmitter && submitter && isValidEmail(submitter) && !teamEmails.includes(submitter)
+        ? [submitter]
+        : [];
     const storedTo = formatEmails(teamEmails);
 
     await sendIdeaEmail(

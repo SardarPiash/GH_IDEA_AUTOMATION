@@ -2,6 +2,7 @@ export type StoredIdea = {
   title: string;
   summary: string;
   teamEmail?: string;
+  ccSubmitter?: boolean;
   sent?: boolean;
 };
 
