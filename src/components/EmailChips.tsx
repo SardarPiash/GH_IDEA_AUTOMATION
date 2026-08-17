@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { formatEmails, isValidEmail, parseEmails } from "@/lib/emails";
+import { TEAM_EMAIL_OPTIONS, teamLabelForEmail } from "@/lib/teamEmails";
 
 type EmailChipsProps = {
   value: string;
@@ -87,58 +88,87 @@ export default function EmailChips({
   }
 
   const empty = emails.length === 0 && !draft;
+  const selected = new Set(emails);
 
   return (
     <div>
-      <div
-        className={`email-chips${readOnly ? " is-readonly" : ""}`}
-        onClick={() => inputRef.current?.focus()}
-      >
-        {emails.map((email) => (
-          <span key={email} className="email-chip">
-            <span className="email-chip-text">{email}</span>
-            {!readOnly && (
-              <button
-                type="button"
-                className="email-chip-remove"
-                aria-label={`Remove ${email}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  remove(email);
-                }}
-              >
-                ×
-              </button>
-            )}
-          </span>
-        ))}
-        {!readOnly && (
-          <input
-            ref={inputRef}
-            className="email-chips-input"
-            value={draft}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              onTyping?.();
-            }}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            onBlur={handleBlur}
-            placeholder={empty ? placeholder : "Add another"}
-            inputMode="email"
-            autoComplete="off"
-            aria-label="Team email addresses"
-          />
-        )}
-        {readOnly && empty && (
-          <span className="email-chips-empty">No team emails</span>
-        )}
+      <div className="email-picker">
+        <select
+          className="email-team-select"
+          value=""
+          disabled={readOnly}
+          aria-label="Select a team email"
+          onChange={(event) => {
+            const email = event.target.value;
+            if (email) commit(email);
+          }}
+        >
+          <option value="">Select a team</option>
+          {TEAM_EMAIL_OPTIONS.map((option) => (
+            <option
+              key={option.email}
+              value={option.email}
+              disabled={selected.has(option.email.toLowerCase())}
+            >
+              {option.team} — {option.email}
+            </option>
+          ))}
+        </select>
+        <div
+          className={`email-chips${readOnly ? " is-readonly" : ""}`}
+          onClick={() => inputRef.current?.focus()}
+        >
+          {emails.map((email) => {
+            const team = teamLabelForEmail(email);
+            return (
+              <span key={email} className="email-chip" title={email}>
+                <span className="email-chip-text">
+                  {team ? `${team} · ${email}` : email}
+                </span>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    className="email-chip-remove"
+                    aria-label={`Remove ${email}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      remove(email);
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            );
+          })}
+          {!readOnly && (
+            <input
+              ref={inputRef}
+              className="email-chips-input"
+              value={draft}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                onTyping?.();
+              }}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              onBlur={handleBlur}
+              placeholder={empty ? placeholder : "Add another"}
+              inputMode="email"
+              autoComplete="off"
+              aria-label="Team email addresses"
+            />
+          )}
+          {readOnly && empty && (
+            <span className="email-chips-empty">No team emails</span>
+          )}
+        </div>
       </div>
       {error ? (
         <div className="email-chips-hint is-error">{error}</div>
       ) : (
         <div className="email-chips-hint">
-          Press Enter or comma to add more. One send goes to every address.
+          Pick a team from the list, or type another email. One send goes to every address.
         </div>
       )}
     </div>

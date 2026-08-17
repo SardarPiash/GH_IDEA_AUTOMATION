@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "rea
 import { useSearchParams } from "next/navigation";
 import { parseSplitResult, type StoredIdea } from "@/lib/split";
 import EmailChips from "@/components/EmailChips";
-import { isValidEmail, parseEmails } from "@/lib/emails";
+import { isValidEmail, parseEmails, formatEmails } from "@/lib/emails";
+import { GH_SITE_TEAM, isGhSiteAssigned } from "@/lib/teamEmails";
 
 type SubmissionRow = {
   rowNumber: number;
@@ -26,6 +27,7 @@ type EditableIdea = StoredIdea & {
 };
 
 type Tab = "pending" | "reviewed";
+type IdeaQueue = "review" | "gh-site";
 
 type AutoSplitState = {
   enabled: boolean;
@@ -61,26 +63,33 @@ function ideasFromRow(row: SubmissionRow): EditableIdea[] | null {
     summary: idea.summary ?? "",
     teamEmail: idea.teamEmail ?? "",
     ccSubmitter: Boolean(idea.ccSubmitter),
+    assignedToGhSite: Boolean(idea.assignedToGhSite),
     sent: Boolean(idea.sent) || row.status === "sent",
     sending: false,
   }));
 }
 
 export default function SplitIdeasPage() {
+  return <SplitIdeasBoard queue="review" />;
+}
+
+export function SplitIdeasBoard({ queue }: { queue: IdeaQueue }) {
   return (
     <Suspense
       fallback={
         <main style={pageStyle}>
-          <p style={{ color: "var(--muted)" }}>Loading split ideas…</p>
+          <p style={{ color: "var(--muted)" }}>
+            {queue === "gh-site" ? "Loading GH site assignments…" : "Loading split ideas…"}
+          </p>
         </main>
       }
     >
-      <SplitIdeasPageInner />
+      <SplitIdeasPageInner queue={queue} />
     </Suspense>
   );
 }
 
-function SplitIdeasPageInner() {
+function SplitIdeasPageInner({ queue }: { queue: IdeaQueue }) {
   const [rows, setRows] = useState<SubmissionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -113,6 +122,7 @@ function SplitIdeasPageInner() {
               remote &&
               (idea.teamEmail ?? "") === (remote.teamEmail ?? "") &&
               Boolean(idea.ccSubmitter) === Boolean(remote.ccSubmitter) &&
+              Boolean(idea.assignedToGhSite) === Boolean(remote.assignedToGhSite) &&
               idea.title === remote.title &&
               idea.summary === remote.summary
             );
@@ -127,6 +137,7 @@ function SplitIdeasPageInner() {
                 summary: prevIdea.summary,
                 teamEmail: prevIdea.teamEmail,
                 ccSubmitter: prevIdea.ccSubmitter,
+                assignedToGhSite: prevIdea.assignedToGhSite,
                 sending: prevIdea.sending,
                 error: prevIdea.error,
               };
@@ -220,11 +231,12 @@ function SplitIdeasPageInner() {
   }
 
   function storedIdeas(ideas: EditableIdea[]): StoredIdea[] {
-    return ideas.map(({ title, summary, teamEmail, ccSubmitter, sent }) => ({
+    return ideas.map(({ title, summary, teamEmail, ccSubmitter, assignedToGhSite, sent }) => ({
       title,
       summary,
       teamEmail,
       ccSubmitter,
+      assignedToGhSite,
       sent,
     }));
   }
@@ -291,6 +303,25 @@ function SplitIdeasPageInner() {
     }
   }
 
+  async function handleAssignToGhSite(row: SubmissionRow, index: number) {
+    const idea = ideasByRowRef.current[row.rowNumber]?.[index];
+    if (!idea || idea.assignedToGhSite) return;
+    const emails = parseEmails(idea.teamEmail);
+    if (!emails.includes(GH_SITE_TEAM.email.toLowerCase())) {
+      emails.push(GH_SITE_TEAM.email);
+    }
+    updateIdea(row.rowNumber, index, {
+      assignedToGhSite: true,
+      teamEmail: formatEmails(emails),
+      error: undefined,
+    });
+    try {
+      await persistEdits(row.rowNumber);
+    } catch (err: any) {
+      updateIdea(row.rowNumber, index, { assignedToGhSite: false, error: err.message });
+    }
+  }
+
   async function handleOpenInBrowser(row: SubmissionRow, index: number) {
     try {
       await persistEdits(row.rowNumber);
@@ -336,7 +367,10 @@ function SplitIdeasPageInner() {
       const allIdeas = ideasByRow[row.rowNumber] ?? [];
       const visible = allIdeas
         .map((idea, index) => ({ idea, index }))
-        .filter(({ idea }) => (tab === "reviewed" ? idea.sent : !idea.sent));
+        .filter(({ idea }) => {
+          if (queue === "gh-site" ? !isGhSiteAssigned(idea) : isGhSiteAssigned(idea)) return false;
+          return tab === "reviewed" ? idea.sent : !idea.sent;
+        });
       if (visible.length === 0) continue;
       groups.push({ row, ideas: visible, totalSplitCount: allIdeas.length });
     }
@@ -370,27 +404,31 @@ function SplitIdeasPageInner() {
       }
     }
     return groups;
-  }, [matchingRows, ideasByRow, tab, sortBy, sortDir, focusRow]);
+  }, [matchingRows, ideasByRow, tab, sortBy, sortDir, focusRow, queue]);
 
   const counts = useMemo(() => {
     let pending = 0;
     let reviewed = 0;
     for (const row of matchingRows) {
       for (const idea of ideasByRow[row.rowNumber] ?? []) {
+        if (queue === "gh-site" ? !isGhSiteAssigned(idea) : isGhSiteAssigned(idea)) continue;
         if (idea.sent) reviewed += 1;
         else pending += 1;
       }
     }
     return { pending, reviewed };
-  }, [matchingRows, ideasByRow]);
+  }, [matchingRows, ideasByRow, queue]);
 
   useEffect(() => {
     if (!focusRow || focusedOnce.current || loading) return;
     const ideas = ideasByRow[focusRow];
     if (!ideas?.length) return;
     focusedOnce.current = true;
-    setTab(ideas.some((idea) => !idea.sent) ? "pending" : "reviewed");
-  }, [focusRow, ideasByRow, loading]);
+    const inQueue = ideas.filter((idea) =>
+      queue === "gh-site" ? isGhSiteAssigned(idea) : !isGhSiteAssigned(idea)
+    );
+    setTab(inQueue.some((idea) => !idea.sent) ? "pending" : "reviewed");
+  }, [focusRow, ideasByRow, loading, queue]);
 
   useEffect(() => {
     if (!focusRow || loading || scrolledOnce.current) return;
@@ -411,7 +449,9 @@ function SplitIdeasPageInner() {
   if (loading) {
     return (
       <main style={pageStyle}>
-        <p style={{ color: "var(--muted)" }}>Loading split ideas…</p>
+        <p style={{ color: "var(--muted)" }}>
+          {queue === "gh-site" ? "Loading GH site assignments…" : "Loading split ideas…"}
+        </p>
       </main>
     );
   }
@@ -419,7 +459,9 @@ function SplitIdeasPageInner() {
   if (loadError) {
     return (
       <main style={pageStyle}>
-        <h1 style={{ fontSize: 24, margin: "0 0 12px" }}>Split ideas</h1>
+        <h1 style={{ fontSize: 24, margin: "0 0 12px" }}>
+          {queue === "gh-site" ? "Assigned to GH site team" : "Split ideas"}
+        </h1>
         <div style={{ ...cardStyle, background: "var(--danger-bg)", borderColor: "#fecaca" }}>
           <strong>Couldn’t load the sheet</strong>
           <pre style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{loadError}</pre>
@@ -440,12 +482,16 @@ function SplitIdeasPageInner() {
         }}
       >
         <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-          <h1 style={{ fontSize: 24, letterSpacing: "-0.03em", margin: "0 0 6px" }}>Split ideas</h1>
+          <h1 style={{ fontSize: 24, letterSpacing: "-0.03em", margin: "0 0 6px" }}>
+            {queue === "gh-site" ? "Assigned to GH site team" : "Split ideas"}
+          </h1>
           <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, maxWidth: 560 }}>
-            Each original submission is one card. All split ideas from that submission
-            appear inside it, with the split count shown on the card.
+            {queue === "gh-site"
+              ? "Ideas handed over from Split ideas for the GH site team. They no longer appear in the main review tabs."
+              : "Each original submission is one card. Assign an idea to GH site to move it out of these review tabs."}
           </p>
         </div>
+        {queue === "review" && (
         <div
           style={{
             display: "flex",
@@ -481,15 +527,16 @@ function SplitIdeasPageInner() {
             {toggleBusy ? "Updating…" : statusText}
           </div>
         </div>
+        )}
       </div>
 
-      {autoSplit?.lastError && (
+      {queue === "review" && autoSplit?.lastError && (
         <div style={{ ...cardStyle, background: "var(--danger-bg)", borderColor: "#fecaca", padding: 14 }}>
           <strong>Auto-split error:</strong> {autoSplit.lastError}
         </div>
       )}
 
-      {enabled && autoSplit?.currentRow && (
+      {queue === "review" && enabled && autoSplit?.currentRow && (
         <section style={{ ...cardStyle, background: "var(--accent-bg)", borderColor: "#bfdbfe" }}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>
             Splitting now · {autoSplit.currentName || `Row ${autoSplit.currentRow}`}
@@ -570,14 +617,20 @@ function SplitIdeasPageInner() {
         <div style={cardStyle}>
           <p style={{ margin: 0, color: "var(--muted)" }}>
             {rows.length === 0
-              ? enabled
+              ? queue === "gh-site"
+                ? "No ideas have been assigned to the GH site team yet."
+                : enabled
                 ? "No split ideas yet. When a new submission lands in the sheet, it will appear here automatically."
                 : "No split ideas yet. Turn Auto-split on to process new sheet submissions."
               : needle
                 ? `No ideas match “${query.trim()}”.`
-                : tab === "pending"
-                  ? "No unsent ideas. Sent items are in Reviewed."
-                  : "No sent ideas yet. Items move here after Send to team."}
+                : queue === "gh-site"
+                  ? tab === "pending"
+                    ? "No assigned GH site ideas waiting to send."
+                    : "No sent GH site ideas yet."
+                  : tab === "pending"
+                    ? "No unsent ideas. Sent items are in Reviewed. Assigned GH site items are on the GH site team page."
+                    : "No sent ideas yet. Items move here after Send to team."}
           </p>
         </div>
       )}
@@ -759,6 +812,15 @@ function SplitIdeasPageInner() {
                     <button type="button" onClick={() => handleDownload(row, index)}>
                       Download PDF
                     </button>
+                    {queue === "review" && !idea.assignedToGhSite && (
+                      <button
+                        type="button"
+                        onClick={() => void handleAssignToGhSite(row, index)}
+                        disabled={idea.sending}
+                      >
+                        Assign to GH site
+                      </button>
+                    )}
                   </div>
                 </div>
                 {idea.sent && idea.teamEmail && (

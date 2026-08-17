@@ -3,6 +3,7 @@ export type StoredIdea = {
   summary: string;
   teamEmail?: string;
   ccSubmitter?: boolean;
+  assignedToGhSite?: boolean;
   sent?: boolean;
 };
 
