@@ -10,6 +10,7 @@ const links = [
 
 export default function Nav() {
   const pathname = usePathname();
+  if (pathname === "/doc") return null;
 
   return (
     <header className="app-header">

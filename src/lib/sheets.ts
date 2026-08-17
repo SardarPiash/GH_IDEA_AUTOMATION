@@ -10,10 +10,11 @@ export { parseSplitResult } from "@/lib/split";
 // so it must not be written to directly:
 // A Timestamp | B Email | C Name | D PIN | E WhatsApp | F Idea details (raw)
 // G Biggest benefit | H Impact size | I Example/reference | J Attachment link | K Anything else
-// N Status (added by us, off to the side of the import range: "", "split", "sent")
+// N Status (added by us: "", "split", "sent")
 // O SplitResultJSON (added by us, cached AI output)
+// P AckEmailSent (added by us: "", "sent" — thank-you email to submitter)
 
-const SHEET_RANGE = "Form Responses 1!A2:O"; // adjust the tab name if yours differs
+const SHEET_RANGE = "Form Responses 1!A2:P"; // adjust the tab name if yours differs
 
 function getSheetsClient() {
   return google.sheets({ version: "v4", auth: getGoogleAuth() });
@@ -34,6 +35,7 @@ export type SubmissionRow = {
   anythingElse: string;
   status: string;
   splitResultJson: string;
+  ackEmailSent: string;
 };
 
 export type ListStatus = "pending" | "split";
@@ -82,6 +84,7 @@ export async function getSubmissions(): Promise<SubmissionRow[]> {
       // blank/unused as a buffer next to the IMPORTRANGE output.
       status: row[13] ?? "",
       splitResultJson: row[14] ?? "",
+      ackEmailSent: row[15] ?? "",
     }));
   } catch (err) {
     console.error("Sheets error:", err);
@@ -106,6 +109,40 @@ export async function getSubmissionsByStatus(status: ListStatus): Promise<Submis
 export async function getSubmission(rowNumber: number): Promise<SubmissionRow | null> {
   const rows = await getSubmissions();
   return rows.find((row) => row.rowNumber === rowNumber) ?? null;
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export function needsAckEmail(row: SubmissionRow): boolean {
+  const ack = (row.ackEmailSent || "").trim().toLowerCase();
+  return ack !== "sent" && Boolean(row.rawIdeaText.trim()) && Boolean(row.email.trim());
+}
+
+export async function getSubmissionsNeedingAckEmail(): Promise<SubmissionRow[]> {
+  const rows = await getAllSubmissions();
+  return rows.filter(needsAckEmail);
+}
+
+export async function countSubmissionsByEmail(email: string): Promise<number> {
+  const needle = normalizeEmail(email);
+  if (!needle) return 0;
+  const rows = await getAllSubmissions();
+  return rows.filter(
+    (row) => normalizeEmail(row.email) === needle && Boolean(row.rawIdeaText.trim())
+  ).length;
+}
+
+export async function markAckEmailSent(rowNumber: number) {
+  const sheets = getSheetsClient();
+  const sheetId = process.env.SHEET_ID;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: sheetId,
+    range: `Form Responses 1!P${rowNumber}`,
+    valueInputOption: "RAW",
+    requestBody: { values: [["sent"]] },
+  });
 }
 
 async function writeSplitColumns(rowNumber: number, status: string, splitResultJson: string) {

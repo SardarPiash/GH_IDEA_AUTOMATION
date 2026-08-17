@@ -1,5 +1,6 @@
 import { splitIdeas } from "@/lib/classifier";
 import { getSubmissionsByStatus, saveSplitResult } from "@/lib/sheets";
+import { sendPendingAcknowledgmentEmails } from "@/lib/submissionAckEmail";
 import { readAutoSplitState, writeAutoSplitState } from "@/lib/autoSplitStore";
 
 const POLL_MS = 20_000;
@@ -19,8 +20,7 @@ function failedUntil() {
 }
 
 export function ensureAutoSplitWorker() {
-  if (readAutoSplitState().enabled) startWorker();
-  else stopWorker();
+  startWorker();
 }
 
 export function setAutoSplitEnabled(enabled: boolean) {
@@ -31,8 +31,12 @@ export function setAutoSplitEnabled(enabled: boolean) {
     currentName: enabled ? readAutoSplitState().currentName : null,
     currentMessage: enabled ? readAutoSplitState().currentMessage : null,
   });
-  if (enabled) startWorker();
-  else stopWorker();
+  startWorker();
+}
+
+export function setAckEmailEnabled(ackEmailEnabled: boolean) {
+  writeAutoSplitState({ ackEmailEnabled });
+  startWorker();
 }
 
 function startWorker() {
@@ -51,11 +55,25 @@ function stopWorker() {
 }
 
 async function tick() {
-  if (!readAutoSplitState().enabled) return;
   if (g.__ideaAutoSplitRunning) return;
   g.__ideaAutoSplitRunning = true;
 
   try {
+    if (readAutoSplitState().ackEmailEnabled) {
+      await sendPendingAcknowledgmentEmails();
+    }
+
+    if (!readAutoSplitState().enabled) {
+      const pending = await getSubmissionsByStatus("pending");
+      writeAutoSplitState({
+        pendingCount: pending.length,
+        currentMessage: readAutoSplitState().ackEmailEnabled
+          ? "Auto-split is off — thank-you emails on"
+          : "Auto-split and thank-you emails are off",
+      });
+      return;
+    }
+
     const pending = await getSubmissionsByStatus("pending");
     const now = Date.now();
     const ready = pending.filter((row) => (failedUntil().get(row.rowNumber) ?? 0) <= now);
@@ -101,3 +119,6 @@ async function tick() {
     g.__ideaAutoSplitRunning = false;
   }
 }
+
+// Kept for tests or manual shutdown; production keeps the worker running for ack emails.
+export { stopWorker };

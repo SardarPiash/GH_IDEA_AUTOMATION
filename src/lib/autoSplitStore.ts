@@ -3,6 +3,7 @@ import path from "path";
 
 export type AutoSplitState = {
   enabled: boolean;
+  ackEmailEnabled: boolean;
   lastRunAt: string | null;
   lastError: string | null;
   currentRow: number | null;
@@ -15,6 +16,7 @@ const FILE = path.join(process.cwd(), ".auto-split.json");
 
 const DEFAULT_STATE: AutoSplitState = {
   enabled: false,
+  ackEmailEnabled: true,
   lastRunAt: null,
   lastError: null,
   currentRow: null,

@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { readAutoSplitState } from "@/lib/autoSplitStore";
-import { ensureAutoSplitWorker, setAutoSplitEnabled } from "@/lib/autoSplitWorker";
+import {
+  ensureAutoSplitWorker,
+  setAckEmailEnabled,
+  setAutoSplitEnabled,
+} from "@/lib/autoSplitWorker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,10 +15,31 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => null)) as { enabled?: unknown } | null;
-  if (typeof body?.enabled !== "boolean") {
-    return NextResponse.json({ error: "enabled must be a boolean" }, { status: 400 });
+  const body = (await req.json().catch(() => null)) as {
+    enabled?: unknown;
+    ackEmailEnabled?: unknown;
+  } | null;
+
+  if (!body || (body.enabled === undefined && body.ackEmailEnabled === undefined)) {
+    return NextResponse.json(
+      { error: "Provide enabled and/or ackEmailEnabled as booleans" },
+      { status: 400 }
+    );
   }
-  setAutoSplitEnabled(body.enabled);
+
+  if (body.enabled !== undefined) {
+    if (typeof body.enabled !== "boolean") {
+      return NextResponse.json({ error: "enabled must be a boolean" }, { status: 400 });
+    }
+    setAutoSplitEnabled(body.enabled);
+  }
+
+  if (body.ackEmailEnabled !== undefined) {
+    if (typeof body.ackEmailEnabled !== "boolean") {
+      return NextResponse.json({ error: "ackEmailEnabled must be a boolean" }, { status: 400 });
+    }
+    setAckEmailEnabled(body.ackEmailEnabled);
+  }
+
   return NextResponse.json(readAutoSplitState());
 }

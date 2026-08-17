@@ -119,6 +119,13 @@ textarea:focus {
   background: #fff;
   padding: 7px 12px 7px 8px;
   font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.switch-label {
+  display: inline-block;
+  min-width: 2.4em;
 }
 
 .switch:hover:not(:disabled) {
@@ -152,6 +159,75 @@ textarea:focus {
 
 .switch[aria-checked="true"] .switch-thumb {
   left: 18px;
+}
+
+.doc-preview {
+  min-height: 100vh;
+  background: #e8edf3;
+  padding: 32px 16px 64px;
+}
+
+.doc-paper {
+  max-width: 760px;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: var(--shadow);
+  padding: 48px 56px 64px;
+}
+
+.doc-meta {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 28px;
+}
+
+.doc-body h1 {
+  font-size: 26px;
+  margin: 0 0 18px;
+  letter-spacing: -0.03em;
+}
+
+.doc-body h2 {
+  font-size: 18px;
+  margin: 28px 0 10px;
+}
+
+.doc-body h3 {
+  font-size: 16px;
+  margin: 22px 0 8px;
+}
+
+.doc-body p {
+  margin: 0 0 12px;
+  line-height: 1.65;
+  font-size: 15px;
+}
+
+.doc-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 24px 0;
+}
+
+.doc-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 16px;
+  font-size: 14px;
+}
+
+.doc-body th,
+.doc-body td {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-body th {
+  background: #f8fafc;
 }
 
 .toolbar {

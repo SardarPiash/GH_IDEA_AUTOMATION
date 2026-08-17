@@ -20,6 +20,11 @@ type SortField = "name" | "pin" | "email" | "timestamp" | "status";
 type SortDir = "asc" | "desc";
 type SplitLog = { message: string; tone: "running" | "done" | "error" };
 
+type WorkerState = {
+  enabled: boolean;
+  ackEmailEnabled: boolean;
+};
+
 const pageStyle: React.CSSProperties = {
   maxWidth: 920,
   margin: "0 auto",
@@ -68,6 +73,8 @@ export default function ShowboardPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | BoardStatus>("all");
   const [splitting, setSplitting] = useState<number | null>(null);
   const [logsByRow, setLogsByRow] = useState<Record<number, SplitLog[]>>({});
+  const [workerState, setWorkerState] = useState<WorkerState | null>(null);
+  const [ackToggleBusy, setAckToggleBusy] = useState(false);
 
   const fetchRows = useCallback(async (silent = false) => {
     if (!silent) {
@@ -88,9 +95,43 @@ export default function ShowboardPage() {
     if (!silent) setLoading(false);
   }, []);
 
+  const fetchWorkerState = useCallback(async () => {
+    const res = await fetch("/api/auto-split");
+    const data = await res.json();
+    if (!data.error) {
+      setWorkerState({
+        enabled: Boolean(data.enabled),
+        ackEmailEnabled: data.ackEmailEnabled !== false,
+      });
+    }
+  }, []);
+
   useEffect(() => {
     void fetchRows();
-  }, [fetchRows]);
+    void fetchWorkerState();
+  }, [fetchRows, fetchWorkerState]);
+
+  async function handleAckEmailToggle() {
+    if (!workerState || ackToggleBusy) return;
+    setAckToggleBusy(true);
+    try {
+      const res = await fetch("/api/auto-split", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ackEmailEnabled: !workerState.ackEmailEnabled }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setWorkerState({
+        enabled: Boolean(data.enabled),
+        ackEmailEnabled: data.ackEmailEnabled !== false,
+      });
+    } catch (err: any) {
+      alert(`Could not update thank-you email setting: ${err.message}`);
+    } finally {
+      setAckToggleBusy(false);
+    }
+  }
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -232,12 +273,62 @@ export default function ShowboardPage() {
 
   return (
     <main style={pageStyle}>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 24, letterSpacing: "-0.03em", margin: "0 0 6px" }}>Showboard</h1>
-        <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, maxWidth: 640 }}>
-          Every original submission, not the split cards. Use this to see what is waiting,
-          already split, or sent.
-        </p>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 16,
+          alignItems: "flex-start",
+          marginBottom: 20,
+        }}
+      >
+        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+          <h1 style={{ fontSize: 24, letterSpacing: "-0.03em", margin: "0 0 6px" }}>Showboard</h1>
+          <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, maxWidth: 640 }}>
+            Every original submission, not the split cards. Use this to see what is waiting,
+            already split, or sent.
+          </p>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "stretch",
+            gap: 6,
+            flex: "0 0 220px",
+            width: 220,
+          }}
+        >
+          <button
+            type="button"
+            className="switch"
+            role="switch"
+            aria-checked={workerState?.ackEmailEnabled ?? false}
+            disabled={ackToggleBusy || !workerState}
+            onClick={() => void handleAckEmailToggle()}
+            style={{ width: "100%", justifyContent: "flex-start" }}
+          >
+            <span className="switch-track" aria-hidden="true">
+              <span className="switch-thumb" />
+            </span>
+            Thank-you email{" "}
+            <span className="switch-label">{workerState?.ackEmailEnabled ? "On" : "Off"}</span>
+          </button>
+          <div
+            style={{
+              fontSize: 12,
+              color: workerState?.ackEmailEnabled ? "var(--success)" : "var(--muted)",
+              textAlign: "right",
+              minHeight: 32,
+            }}
+          >
+            {ackToggleBusy
+              ? "Updating…"
+              : workerState?.ackEmailEnabled
+                ? "New submitters get a thank-you email"
+                : "Thank-you emails are paused"}
+          </div>
+        </div>
       </div>
 
       <div
@@ -387,7 +478,7 @@ export default function ShowboardPage() {
                 </button>
               )}
               {status !== "pending" && (
-                <Link href="/split-ideas">
+                <Link href={`/split-ideas?row=${row.rowNumber}`}>
                   <button type="button">Open split ideas</button>
                 </Link>
               )}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { parseSplitResult, type StoredIdea } from "@/lib/split";
 
 type SubmissionRow = {
@@ -26,6 +27,7 @@ type Tab = "pending" | "reviewed";
 
 type AutoSplitState = {
   enabled: boolean;
+  ackEmailEnabled: boolean;
   lastRunAt: string | null;
   lastError: string | null;
   currentRow: number | null;
@@ -62,6 +64,20 @@ function ideasFromRow(row: SubmissionRow): EditableIdea[] | null {
 }
 
 export default function SplitIdeasPage() {
+  return (
+    <Suspense
+      fallback={
+        <main style={pageStyle}>
+          <p style={{ color: "var(--muted)" }}>Loading split ideas…</p>
+        </main>
+      }
+    >
+      <SplitIdeasPageInner />
+    </Suspense>
+  );
+}
+
+function SplitIdeasPageInner() {
   const [rows, setRows] = useState<SubmissionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -73,6 +89,10 @@ export default function SplitIdeasPage() {
   const [autoSplit, setAutoSplit] = useState<AutoSplitState | null>(null);
   const [toggleBusy, setToggleBusy] = useState(false);
   const dirtyRows = useRef(new Set<number>());
+  const focusedOnce = useRef(false);
+  const scrolledOnce = useRef(false);
+  const searchParams = useSearchParams();
+  const focusRow = Number(searchParams.get("row") || 0) || null;
 
   const applyRows = useCallback((nextRows: SubmissionRow[]) => {
     setRows(nextRows);
@@ -223,6 +243,19 @@ export default function SplitIdeasPage() {
     }
   }
 
+  async function handleOpenInBrowser(row: SubmissionRow, index: number) {
+    try {
+      await persistEdits(row.rowNumber, ideasByRow[row.rowNumber]);
+      window.open(
+        `/doc?rowNumber=${row.rowNumber}&ideaIndex=${index}`,
+        "_blank",
+        "noopener,noreferrer"
+      );
+    } catch (err: any) {
+      alert(`Could not open document: ${err.message}`);
+    }
+  }
+
   async function handleDownload(row: SubmissionRow, index: number) {
     try {
       await persistEdits(row.rowNumber, ideasByRow[row.rowNumber]);
@@ -242,17 +275,26 @@ export default function SplitIdeasPage() {
     });
   }, [rows, needle]);
 
-  const visibleIdeas = useMemo(() => {
-    const items: { row: SubmissionRow; idea: EditableIdea; index: number }[] = [];
+  const visibleSubmissionGroups = useMemo(() => {
+    type IdeaEntry = { idea: EditableIdea; index: number };
+    type SubmissionGroup = {
+      row: SubmissionRow;
+      ideas: IdeaEntry[];
+      totalSplitCount: number;
+    };
+
+    const groups: SubmissionGroup[] = [];
     for (const row of matchingRows) {
-      for (const [index, idea] of (ideasByRow[row.rowNumber] ?? []).entries()) {
-        if (tab === "reviewed" ? idea.sent : !idea.sent) {
-          items.push({ row, idea, index });
-        }
-      }
+      const allIdeas = ideasByRow[row.rowNumber] ?? [];
+      const visible = allIdeas
+        .map((idea, index) => ({ idea, index }))
+        .filter(({ idea }) => (tab === "reviewed" ? idea.sent : !idea.sent));
+      if (visible.length === 0) continue;
+      groups.push({ row, ideas: visible, totalSplitCount: allIdeas.length });
     }
+
     const dir = sortDir === "asc" ? 1 : -1;
-    items.sort((a, b) => {
+    groups.sort((a, b) => {
       const av = a.row[sortBy] ?? "";
       const bv = b.row[sortBy] ?? "";
       if (sortBy === "pin") {
@@ -261,8 +303,8 @@ export default function SplitIdeasPage() {
         if (!Number.isNaN(an) && !Number.isNaN(bn) && an !== bn) return (an - bn) * dir;
       }
       if (sortBy === "timestamp") {
-        const at = Date.parse(av) || 0;
-        const bt = Date.parse(bv) || 0;
+        const at = Date.parse(String(av)) || 0;
+        const bt = Date.parse(String(bv)) || 0;
         if (at !== bt) return (at - bt) * dir;
       }
       const cmp = String(av).localeCompare(String(bv), undefined, {
@@ -270,10 +312,17 @@ export default function SplitIdeasPage() {
         sensitivity: "base",
       });
       if (cmp !== 0) return cmp * dir;
-      return a.row.rowNumber - b.row.rowNumber || a.index - b.index;
+      return a.row.rowNumber - b.row.rowNumber;
     });
-    return items;
-  }, [matchingRows, ideasByRow, tab, sortBy, sortDir]);
+    if (focusRow) {
+      const idx = groups.findIndex((group) => group.row.rowNumber === focusRow);
+      if (idx > 0) {
+        const [focused] = groups.splice(idx, 1);
+        groups.unshift(focused);
+      }
+    }
+    return groups;
+  }, [matchingRows, ideasByRow, tab, sortBy, sortDir, focusRow]);
 
   const counts = useMemo(() => {
     let pending = 0;
@@ -286,6 +335,22 @@ export default function SplitIdeasPage() {
     }
     return { pending, reviewed };
   }, [matchingRows, ideasByRow]);
+
+  useEffect(() => {
+    if (!focusRow || focusedOnce.current || loading) return;
+    const ideas = ideasByRow[focusRow];
+    if (!ideas?.length) return;
+    focusedOnce.current = true;
+    setTab(ideas.some((idea) => !idea.sent) ? "pending" : "reviewed");
+  }, [focusRow, ideasByRow, loading]);
+
+  useEffect(() => {
+    if (!focusRow || loading || scrolledOnce.current) return;
+    const el = document.getElementById(`submission-${focusRow}`);
+    if (!el) return;
+    scrolledOnce.current = true;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [focusRow, loading, tab, visibleSubmissionGroups.length]);
 
   const enabled = Boolean(autoSplit?.enabled);
   const statusText = enabled
@@ -323,18 +388,26 @@ export default function SplitIdeasPage() {
           justifyContent: "space-between",
           gap: 16,
           alignItems: "flex-start",
-          flexWrap: "wrap",
           marginBottom: 20,
         }}
       >
-        <div>
+        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
           <h1 style={{ fontSize: 24, letterSpacing: "-0.03em", margin: "0 0 6px" }}>Split ideas</h1>
           <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, maxWidth: 560 }}>
-            New sheet submissions are split here automatically. Each idea opens in its
-            own edit box, stacked one under another.
+            Each original submission is one card. All split ideas from that submission
+            appear inside it, with the split count shown on the card.
           </p>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "stretch",
+            gap: 6,
+            flex: "0 0 220px",
+            width: 220,
+          }}
+        >
           <button
             type="button"
             className="switch"
@@ -342,13 +415,21 @@ export default function SplitIdeasPage() {
             aria-checked={enabled}
             disabled={toggleBusy || !autoSplit}
             onClick={() => void handleToggle()}
+            style={{ width: "100%", justifyContent: "flex-start" }}
           >
             <span className="switch-track" aria-hidden="true">
               <span className="switch-thumb" />
             </span>
-            Auto-split {enabled ? "On" : "Off"}
+            Auto-split <span className="switch-label">{enabled ? "On" : "Off"}</span>
           </button>
-          <div style={{ fontSize: 12, color: enabled ? "var(--success)" : "var(--muted)", maxWidth: 280, textAlign: "right" }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: enabled ? "var(--success)" : "var(--muted)",
+              textAlign: "right",
+              minHeight: 32,
+            }}
+          >
             {toggleBusy ? "Updating…" : statusText}
           </div>
         </div>
@@ -437,7 +518,7 @@ export default function SplitIdeasPage() {
         />
       </div>
 
-      {visibleIdeas.length === 0 && (
+      {visibleSubmissionGroups.length === 0 && (
         <div style={cardStyle}>
           <p style={{ margin: 0, color: "var(--muted)" }}>
             {rows.length === 0
@@ -453,8 +534,19 @@ export default function SplitIdeasPage() {
         </div>
       )}
 
-      {visibleIdeas.map(({ row, idea, index }) => (
-        <article key={`${row.rowNumber}-${index}`} style={cardStyle}>
+      {visibleSubmissionGroups.map(({ row, ideas, totalSplitCount }) => {
+        const isFocused = focusRow === row.rowNumber;
+        return (
+        <article
+          key={row.rowNumber}
+          id={`submission-${row.rowNumber}`}
+          style={{
+            ...cardStyle,
+            ...(isFocused
+              ? { borderColor: "#93c5fd", boxShadow: "0 0 0 2px #bfdbfe, var(--shadow)" }
+              : {}),
+          }}
+        >
           <div
             style={{
               display: "flex",
@@ -474,17 +566,17 @@ export default function SplitIdeasPage() {
               style={{
                 fontSize: 12,
                 fontWeight: 700,
-                padding: "4px 8px",
+                padding: "4px 10px",
                 borderRadius: 999,
-                background: idea.sent ? "var(--success-bg)" : "var(--accent-bg)",
-                color: idea.sent ? "var(--success)" : "var(--primary)",
+                background: "var(--accent-bg)",
+                color: "var(--primary)",
               }}
             >
-              {idea.sent ? "Sent" : "Awaiting send"}
+              {totalSplitCount} split idea{totalSplitCount === 1 ? "" : "s"}
             </span>
           </div>
 
-          <details style={{ marginBottom: 14 }}>
+          <details style={{ marginBottom: 16 }}>
             <summary
               style={{
                 cursor: "pointer",
@@ -512,66 +604,116 @@ export default function SplitIdeasPage() {
             </pre>
           </details>
 
-          <input
-            value={idea.title}
-            readOnly={idea.sent}
-            onChange={(e) => updateIdea(row.rowNumber, index, { title: e.target.value })}
-            onBlur={() => handleBlur(row.rowNumber)}
-            style={{
-              fontWeight: 700,
-              width: "100%",
-              marginBottom: 8,
-              fontSize: 15,
-              background: idea.sent ? "#f8fafc" : "#fff",
-            }}
-          />
-          <textarea
-            value={idea.summary}
-            readOnly={idea.sent}
-            onChange={(e) => updateIdea(row.rowNumber, index, { summary: e.target.value })}
-            onBlur={() => handleBlur(row.rowNumber)}
-            rows={16}
-            style={{
-              width: "100%",
-              marginBottom: 12,
-              fontSize: 13,
-              lineHeight: 1.5,
-              resize: "vertical",
-              background: idea.sent ? "#f8fafc" : "#fff",
-            }}
-          />
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <input
-              placeholder="team@company.com"
-              value={idea.teamEmail ?? ""}
-              readOnly={idea.sent}
-              onChange={(e) => updateIdea(row.rowNumber, index, { teamEmail: e.target.value })}
-              onBlur={() => handleBlur(row.rowNumber)}
-              style={{ flex: "1 1 240px", minWidth: 200, background: idea.sent ? "#f8fafc" : "#fff" }}
-            />
-            {tab === "pending" && (
-              <button
-                className="primary"
-                onClick={() => handleSend(row, index)}
-                disabled={idea.sending || idea.sent}
+          <div style={{ display: "grid", gap: 14 }}>
+            {ideas.map(({ idea, index }) => (
+              <section
+                key={index}
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  padding: 14,
+                  background: "#fbfcfe",
+                }}
               >
-                {idea.sending ? "Sending…" : "Send to team"}
-              </button>
-            )}
-            <button type="button" onClick={() => handleDownload(row, index)}>
-              Download .docx
-            </button>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 10,
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+                    Split idea {index + 1} of {totalSplitCount}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      padding: "3px 8px",
+                      borderRadius: 999,
+                      background: idea.sent ? "var(--success-bg)" : "var(--accent-bg)",
+                      color: idea.sent ? "var(--success)" : "var(--primary)",
+                    }}
+                  >
+                    {idea.sent ? "Sent" : "Awaiting send"}
+                  </span>
+                </div>
+
+                <input
+                  value={idea.title}
+                  readOnly={idea.sent}
+                  onChange={(e) => updateIdea(row.rowNumber, index, { title: e.target.value })}
+                  onBlur={() => handleBlur(row.rowNumber)}
+                  style={{
+                    fontWeight: 700,
+                    width: "100%",
+                    marginBottom: 8,
+                    fontSize: 15,
+                    background: idea.sent ? "#f8fafc" : "#fff",
+                  }}
+                />
+                <textarea
+                  value={idea.summary}
+                  readOnly={idea.sent}
+                  onChange={(e) => updateIdea(row.rowNumber, index, { summary: e.target.value })}
+                  onBlur={() => handleBlur(row.rowNumber)}
+                  rows={16}
+                  style={{
+                    width: "100%",
+                    marginBottom: 12,
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                    resize: "vertical",
+                    background: idea.sent ? "#f8fafc" : "#fff",
+                  }}
+                />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <input
+                    placeholder="team@company.com"
+                    value={idea.teamEmail ?? ""}
+                    readOnly={idea.sent}
+                    onChange={(e) =>
+                      updateIdea(row.rowNumber, index, { teamEmail: e.target.value })
+                    }
+                    onBlur={() => handleBlur(row.rowNumber)}
+                    style={{
+                      flex: "1 1 240px",
+                      minWidth: 200,
+                      background: idea.sent ? "#f8fafc" : "#fff",
+                    }}
+                  />
+                  {tab === "pending" && (
+                    <button
+                      className="primary"
+                      onClick={() => handleSend(row, index)}
+                      disabled={idea.sending || idea.sent}
+                    >
+                      {idea.sending ? "Sending…" : "Send to team"}
+                    </button>
+                  )}
+                  <button type="button" onClick={() => handleOpenInBrowser(row, index)}>
+                    Open in browser
+                  </button>
+                  <button type="button" onClick={() => handleDownload(row, index)}>
+                    Download .docx
+                  </button>
+                </div>
+                {idea.sent && idea.teamEmail && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: "var(--success)", fontWeight: 600 }}>
+                    Handed over to {idea.teamEmail}
+                  </div>
+                )}
+                {idea.error && (
+                  <div style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{idea.error}</div>
+                )}
+              </section>
+            ))}
           </div>
-          {idea.sent && idea.teamEmail && (
-            <div style={{ marginTop: 8, fontSize: 12, color: "var(--success)", fontWeight: 600 }}>
-              Handed over to {idea.teamEmail}
-            </div>
-          )}
-          {idea.error && (
-            <div style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }}>{idea.error}</div>
-          )}
         </article>
-      ))}
+        );
+      })}
     </main>
   );
 }
