@@ -1,4 +1,5 @@
 import type { SubmissionRow } from "@/lib/sheets";
+import { teamLabelForEmail } from "@/lib/teamEmails";
 
 function escapeHtml(value: string) {
   return value
@@ -17,15 +18,37 @@ export function ideaEmailSubject(title: string) {
   return `Idea for your review: ${title.trim() || "Untitled idea"}`;
 }
 
+function senderAddress() {
+  return process.env.GMAIL_SENDER_ADDRESS?.trim() || "";
+}
+
+function responsibleLines(emails: string[]): string[] {
+  return emails.map((email) => {
+    const team = teamLabelForEmail(email);
+    return team ? `${team} — ${email}` : email;
+  });
+}
+
 export function ideaEmailContent(
   row: SubmissionRow,
-  title: string
+  title: string,
+  responsibleEmails: string[] = []
 ): { text: string; html: string } {
   const idea = display(title);
   const submittedBy = display(row.name);
   const pin = display(row.pin);
   const benefit = display(row.biggestBenefit);
   const impact = display(row.impactSize);
+  const fromAddress = display(senderAddress());
+  const responsible = responsibleLines(responsibleEmails);
+  const responsibleText = responsible.length
+    ? responsible.map((line) => `- ${line}`).join("\n")
+    : "- —";
+  const responsibleHtml = responsible.length
+    ? `<ul>${responsible
+        .map((line) => `<li>${escapeHtml(line)}</li>`)
+        .join("")}</ul>`
+    : "<p>—</p>";
 
   const text = `Dear Team,
 
@@ -36,6 +59,12 @@ Submitted By: ${submittedBy}
 PIN: ${pin}
 Expected Benefit: ${benefit}
 Expected Impact: ${impact}
+PDF title: ${idea}.pdf
+
+Responsible for implementation:
+${responsibleText}
+
+For any query contact here: ${fromAddress}
 
 The detailed idea proposal (PDF) is attached to this email for your reference.
 
@@ -52,8 +81,12 @@ Growth Hack Team
   <strong>Submitted By:</strong> ${escapeHtml(submittedBy)}<br>
   <strong>PIN:</strong> ${escapeHtml(pin)}<br>
   <strong>Expected Benefit:</strong> ${escapeHtml(benefit)}<br>
-  <strong>Expected Impact:</strong> ${escapeHtml(impact)}
+  <strong>Expected Impact:</strong> ${escapeHtml(impact)}<br>
+  <strong>PDF title:</strong> ${escapeHtml(idea)}.pdf
 </p>
+<p><strong>Responsible for implementation:</strong></p>
+${responsibleHtml}
+<p><strong>For any query contact here:</strong> ${escapeHtml(fromAddress)}</p>
 <p>The detailed idea proposal (PDF) is attached to this email for your reference.</p>
 <p>Please review the idea and proceed with the necessary steps from your end.</p>
 <p>Regards,<br><strong>Growth Hack Team</strong></p>`;

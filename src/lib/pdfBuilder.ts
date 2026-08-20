@@ -41,16 +41,21 @@ function runChrome(htmlPath: string, pdfPath: string): Promise<void> {
   });
 }
 
+function markdownWithTitle(title: string, summary: string): string {
+  const heading = `# Idea Proposal: ${title.trim() || "Untitled idea"}`;
+  const body = summary.trim();
+  if (!body) return `${heading}\n\n${title}`;
+  if (/^#\s+/.test(body)) return body;
+  return `${heading}\n\n${body}`;
+}
+
 export async function buildIdeaPdf(
   title: string,
   summary: string,
   meta?: string
 ): Promise<Buffer> {
-  const markdown = summary?.trim()
-    ? summary
-    : `# Idea Proposal: ${title}\n\n${title}`;
-
-  const html = buildIdeaDocumentHtml({ markdown, meta });
+  const markdown = markdownWithTitle(title, summary);
+  const html = buildIdeaDocumentHtml({ markdown, meta, title });
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "idea-pdf-"));
   const htmlPath = path.join(tmpDir, "document.html");
   const pdfPath = path.join(tmpDir, "document.pdf");

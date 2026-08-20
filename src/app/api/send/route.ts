@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     const title = idea.title || "idea";
     const meta = `${row.name || "Unknown submitter"} · PIN ${row.pin || "—"} · ${row.timestamp || "No date"}`;
     const pdf = await buildIdeaPdf(title, idea.summary ?? "", meta);
-    const { text, html } = ideaEmailContent(row, title);
+    const { text, html } = ideaEmailContent(row, title, teamEmails);
     const submitter = parseEmails(row.email)[0];
     const includeSubmitter = Boolean(ccSubmitter ?? idea.ccSubmitter);
     const cc =

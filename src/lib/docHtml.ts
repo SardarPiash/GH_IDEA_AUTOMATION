@@ -106,18 +106,26 @@ body {
 export function buildIdeaDocumentHtml({
   markdown,
   meta,
+  title,
 }: {
   markdown: string;
   meta?: string;
+  title?: string;
 }): string {
   const bodyHtml = markdownToHtml(markdown);
   const metaBlock = meta ? `<div class="doc-meta">${meta}</div>` : "";
+  const pageTitle = (title || "Idea proposal").trim();
 
   return `<!DOCTYPE html>
 <html lang="bn">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${pageTitle
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")}</title>
   <style>${docStyles()}</style>
 </head>
 <body>

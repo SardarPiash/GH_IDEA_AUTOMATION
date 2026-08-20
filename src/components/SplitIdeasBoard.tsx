@@ -278,7 +278,6 @@ function SplitIdeasPageInner({ queue }: { queue: IdeaQueue }) {
           prev.map((r) => (r.rowNumber === row.rowNumber ? { ...r, status: "sent" } : r))
         );
       }
-      setTab("reviewed");
     } catch (err: any) {
       updateIdea(row.rowNumber, index, { sending: false, error: err.message });
     }

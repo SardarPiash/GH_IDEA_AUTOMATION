@@ -9,9 +9,16 @@ services:
       CHROME_PATH: /usr/bin/chromium
       AUTO_SPLIT_STATE_PATH: /data/auto-split.json
       CODEX_WORKDIR: /app
+      # Image user has HOME=/nonexistent; Cursor CLI needs a writable cache dir.
+      HOME: /tmp
+      NODE_COMPILE_CACHE: /tmp/cursor-compile-cache
     volumes:
       - idea-data:/data
       - ./.env.local:/app/.env.local:ro
+      # Host Cursor CLI is not in the image. Mount the real install so
+      # CURSOR_BIN=/home/gh/.local/bin/cursor-agent resolves inside the container.
+      - /home/gh/.local/bin:/home/gh/.local/bin:ro
+      - /home/gh/.local/share/cursor-agent:/home/gh/.local/share/cursor-agent:ro
     restart: unless-stopped
 
 volumes:
