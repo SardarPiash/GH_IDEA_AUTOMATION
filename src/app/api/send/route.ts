@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sendIdeaEmail } from "@/lib/gmail";
 import { getSubmission, markSplitIdeaSent } from "@/lib/sheets";
 import { parseSplitResult } from "@/lib/split";
-import { buildIdeaPdf } from "@/lib/pdfBuilder";
-import { ideaEmailContent, ideaEmailSubject } from "@/lib/emailTemplate";
+import { sendStoredIdeaEmail } from "@/lib/sendIdeaMail";
 import { formatEmails, invalidEmails, isValidEmail, parseEmails } from "@/lib/emails";
 
 // POST /api/send -> { rowNumber, ideaIndex, to }
@@ -40,10 +38,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Split idea not found" }, { status: 400 });
     }
 
-    const title = idea.title || "idea";
-    const meta = `${row.name || "Unknown submitter"} · PIN ${row.pin || "—"} · ${row.timestamp || "No date"}`;
-    const pdf = await buildIdeaPdf(title, idea.summary ?? "", meta);
-    const { text, html } = ideaEmailContent(row, title, teamEmails);
     const submitter = parseEmails(row.email)[0];
     const includeSubmitter = Boolean(ccSubmitter ?? idea.ccSubmitter);
     const cc =
@@ -52,18 +46,10 @@ export async function POST(req: NextRequest) {
         : [];
     const storedTo = formatEmails(teamEmails);
 
-    await sendIdeaEmail(
-      teamEmails,
-      ideaEmailSubject(title),
-      text,
-      {
-        filename: `${title}.pdf`,
-        content: pdf,
-        contentType: "application/pdf",
-      },
-      html,
-      cc
-    );
+    await sendStoredIdeaEmail(row, idea, teamEmails, {
+      cc,
+      responsibleEmails: teamEmails,
+    });
     const result = await markSplitIdeaSent(rowNumber, ideaIndex, storedTo);
 
     return NextResponse.json({ ok: true, ...result });

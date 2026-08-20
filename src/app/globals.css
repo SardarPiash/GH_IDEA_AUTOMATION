@@ -827,6 +827,57 @@ a.metric-card {
   background: #f8fafc;
 }
 
+.resend-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.resend-form input[type="email"] {
+  min-width: min(100%, 320px);
+  flex: 1;
+}
+
+.resend-count,
+.resend-status {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.resend-status {
+  margin: 14px 0 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.resend-log,
+.resend-preview {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.resend-log .is-ok {
+  color: var(--success);
+}
+
+.resend-log .is-fail {
+  color: var(--danger);
+}
+
+.resend-preview li {
+  margin-bottom: 6px;
+}
+
+.resend-preview span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;

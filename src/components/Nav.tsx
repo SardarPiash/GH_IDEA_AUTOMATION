@@ -7,6 +7,7 @@ const links = [
   { href: "/", label: "Dashboard" },
   { href: "/split-ideas", label: "Split ideas" },
   { href: "/gh-site", label: "GH site team" },
+  { href: "/resend-sent", label: "Resend sent" },
 ];
 
 export default function Nav() {
