@@ -1,4 +1,5 @@
 :root {
+  --header-h: 62px;
   --bg: #f4f6fb;
   --bg-accent: #eef2ff;
   --card: #ffffff;
@@ -103,6 +104,10 @@ select:focus {
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
   padding: 28px 0 72px;
+}
+
+.page-shell.is-wide {
+  width: min(1360px, calc(100% - 32px));
 }
 
 .page-hero {
@@ -642,7 +647,7 @@ a.metric-card {
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
   padding: 0 28px;
-  height: 62px;
+  height: var(--header-h);
   display: flex;
   align-items: center;
   gap: 18px;
@@ -890,6 +895,93 @@ a.metric-card {
   padding: 10px;
   box-shadow: var(--shadow);
 }
+
+.overview-table-wrap {
+  padding: 0;
+  overflow: visible;
+}
+
+.overview-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+
+.overview-table th,
+.overview-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+.overview-table thead th {
+  position: sticky;
+  top: var(--header-h);
+  z-index: 5;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: middle;
+  box-shadow: 0 1px 0 var(--border);
+}
+
+.overview-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.overview-table tbody tr:hover td {
+  background: #f8fbff;
+}
+
+.overview-idea {
+  display: grid;
+  gap: 4px;
+  min-width: 240px;
+  max-width: 360px;
+}
+
+.overview-idea-index {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.overview-idea-preview {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.overview-submitter {
+  display: grid;
+  gap: 3px;
+  min-width: 160px;
+}
+
+.overview-submitter span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.overview-nowrap {
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.overview-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 
 .toolbar select {
   border: 1px solid var(--border);

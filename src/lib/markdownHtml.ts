@@ -16,6 +16,15 @@ function formatInlines(text: string) {
     );
 }
 
+function stripInlines(text: string) {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, "$1")
+    .trim();
+}
+
 function isTableLine(line: string) {
   return /^\|.+\|$/.test(line.trim());
 }
@@ -92,4 +101,31 @@ export function markdownToHtml(markdown: string): string {
   }
 
   return html.join("\n");
+}
+
+export function markdownToPlainText(markdown: string): string {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const parts: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim() || /^---+$/.test(line.trim())) {
+      i += 1;
+      continue;
+    }
+
+    if (isTableLine(line)) {
+      while (i < lines.length && isTableLine(lines[i])) i += 1;
+      continue;
+    }
+
+    const text = stripInlines(line.replace(/^#{1,6}\s+/, ""));
+    if (text && !/^\d+\.\s+idea submission information$/i.test(text)) {
+      parts.push(text);
+    }
+    i += 1;
+  }
+
+  return parts.join(" ").replace(/\s+/g, " ").trim();
 }

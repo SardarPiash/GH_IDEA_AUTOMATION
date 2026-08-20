@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const links = [
   { href: "/", label: "Dashboard" },
   { href: "/split-ideas", label: "Split ideas" },
+  { href: "/split-overview", label: "Overview" },
   { href: "/gh-site", label: "GH site team" },
   { href: "/resend-sent", label: "Resend sent" },
 ];

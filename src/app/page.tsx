@@ -411,6 +411,11 @@ export default function ShowboardPage() {
       </div>
 
       <div className="metric-grid">
+        <Link className="metric-card is-slate" href="/split-overview">
+          <div className="label">All split ideas</div>
+          <div className="value">{metrics.ideas}</div>
+          <div className="hint">Open overview table</div>
+        </Link>
         <Link className="metric-card is-blue" href="/split-ideas">
           <div className="label">Awaiting send</div>
           <div className="value">{metrics.ideasAwaiting}</div>
